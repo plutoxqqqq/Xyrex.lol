@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Xyrex.lol | Roblox Executor Directory</title>
+  <meta name="description" content="Xyrex.lol is a Roblox executor and script hub featuring executor comparisons, sUNC scores, platform filters, trusted reviews, popular scripts, and real-time updates." />
+  <meta name="keywords" content="Roblox executors, script hub, sUNC comparison, executor directory, Roblox scripts, platform filters, trusted executor reviews, exploit comparison, Xyrex" />
+  <meta name="author" content="Xyrex.lol" />
+  <meta name="robots" content="index,follow,max-snippet:180,max-image-preview:large,max-video-preview:-1" />
+  <meta name="googlebot" content="index,follow,max-snippet:180,max-image-preview:large,max-video-preview:-1" />
+  <meta name="theme-color" content="#6f6bff" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <link rel="canonical" href="https://xyrex.lol/" />
+  <meta property="og:site_name" content="Xyrex.lol" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:title" content="Xyrex.lol | Roblox Executor Directory, sUNC Comparisons, and Script Hub" />
+  <meta property="og:description" content="Xyrex.lol is a Roblox executor and script hub featuring executor comparisons, sUNC scores, platform filters, trusted reviews, popular scripts, and real-time updates." />
+  <meta property="og:url" content="https://xyrex.lol/" />
+  <meta property="og:image" content="https://xyrex.lol/otherscripts/logo.png" />
+  <meta property="og:image:alt" content="Xyrex.lol - Roblox executor directory and script hub" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Xyrex.lol | Roblox Executor Directory, sUNC Comparisons, and Script Hub" />
+  <meta name="twitter:description" content="Xyrex.lol is a Roblox executor and script hub featuring executor comparisons, sUNC scores, platform filters, trusted reviews, popular scripts, and real-time updates." />
+  <meta name="twitter:image" content="https://xyrex.lol/otherscripts/logo.png" />
+  <meta name="twitter:image:alt" content="Xyrex.lol - Roblox executor directory and script hub" />
+  <script type="application/ld+json" id="xyrex-jsonld-website">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Xyrex.lol",
+      "url": "https://xyrex.lol/",
+      "description": "Xyrex.lol is a Roblox executor and script hub featuring executor comparisons, sUNC scores, platform filters, trusted reviews, popular scripts, and real-time updates.",
+      "publisher": {
+        "@type": "Organization",
+        "name": "Xyrex.lol",
+        "url": "https://xyrex.lol/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://xyrex.lol/otherscripts/logo.png"
+        }
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://xyrex.lol/?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+  </script>
+  <script type="application/ld+json" id="xyrex-jsonld-organization">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Xyrex.lol",
+      "url": "https://xyrex.lol/",
+      "logo": "https://xyrex.lol/otherscripts/logo.png",
+      "sameAs": [
+        "https://discord.gg/6YXCAQYY"
+      ]
+    }
+  </script>
+  <script>
+    (function () {
+      const GLOBAL_PREFIX = '__xyrex_global__';
+      const CURRENT_ACCOUNT_KEY = `${GLOBAL_PREFIX}current_account`;
+      const listeners = new Set();
+      const originalGetItem = localStorage.getItem.bind(localStorage);
+      const originalSetItem = localStorage.setItem.bind(localStorage);
+      const originalRemoveItem = localStorage.removeItem.bind(localStorage);
+
+      let activeAccount = originalGetItem(CURRENT_ACCOUNT_KEY) || 'guest';
+
+      function scopedKey(key) {
+        const value = String(key || '');
+        if (value.startsWith(GLOBAL_PREFIX)) return value;
+        return `acct:${activeAccount}:${value}`;
+      }
+
+      localStorage.getItem = key => originalGetItem(scopedKey(key));
+      localStorage.setItem = (key, value) => originalSetItem(scopedKey(key), value);
+      localStorage.removeItem = key => originalRemoveItem(scopedKey(key));
+
+      const XyrexAccountScopeApi = Object.freeze({
+        getAccount() {
+          return activeAccount;
+        },
+        setAccount(nextAccount) {
+          const normalized = String(nextAccount || '').trim().toLowerCase() || 'guest';
+          activeAccount = normalized;
+          originalSetItem(CURRENT_ACCOUNT_KEY, normalized);
+          listeners.forEach(listener => {
+            try {
+              listener(normalized);
+            } catch {
+              // no-op
+            }
+          });
+        },
+        onAccountChange(callback) {
+          if (typeof callback !== 'function') return () => {};
+          listeners.add(callback);
+          return () => listeners.delete(callback);
+        },
+        clearAccount() {
+          this.setAccount('guest');
+        }
+      });
+      Object.defineProperty(window, 'XyrexAccountScope', { value: XyrexAccountScopeApi, writable: false, configurable: false });
+    })();
+  </script>
+  <script src="./data/theme.js?v=1.0.1"></script>
+  <link rel="icon" type="image/x-icon" href="./favicon.ico" sizes="16x16 32x32 48x48" />
+  <link rel="icon" href="./favicon.ico" sizes="any" />
+  <link rel="shortcut icon" href="./favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./favicon.ico" />
+  <link rel="stylesheet" href="./style.css?v=2.0.7" />
+  <link rel="stylesheet" href="./lore.css?v=1.0.0" />
+</head>
+<body>
+  <div id="appLoadingOverlay" class="app-loading-overlay" aria-live="polite" aria-busy="true">
+    <div class="app-loading-brand" aria-label="Xyrex Exploit Directory">
+      <span style="--word-index:0">Xyrex</span>
+      <span style="--word-index:1">Exploit</span>
+      <span style="--word-index:2">Directory</span>
+    </div>
+  </div>
+
+  <header class="topnav">
+    <div class="nav-inner">
+      <button id="brandHomeBtn" class="brand brand-btn" type="button">Xyrex.lol</button>
+
+      <div class="search-wrap">
+        <input id="searchInput" class="search-input" type="text" placeholder="Search Executors..." aria-label="Search Executors" autocomplete="off" />
+        <button id="clearSearchBtn" class="btn-ghost" title="Clear search" aria-label="Clear search input">✕</button>
+      </div>
+
+      <button id="settingsTabBtn" class="settings-tab-btn themed-icon-control" type="button" aria-label="Open settings" title="Settings">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true" focusable="false"><path fill="currentColor" d="M259.1 73.5C262.1 58.7 275.2 48 290.4 48L350.2 48C365.4 48 378.5 58.7 381.5 73.5L396 143.5C410.1 149.5 423.3 157.2 435.3 166.3L503.1 143.8C517.5 139 533.3 145 540.9 158.2L570.8 210C578.4 223.2 575.7 239.8 564.3 249.9L511 297.3C511.9 304.7 512.3 312.3 512.3 320C512.3 327.7 511.8 335.3 511 342.7L564.4 390.2C575.8 400.3 578.4 417 570.9 430.1L541 481.9C533.4 495 517.6 501.1 503.2 496.3L435.4 473.8C423.3 482.9 410.1 490.5 396.1 496.6L381.7 566.5C378.6 581.4 365.5 592 350.4 592L290.6 592C275.4 592 262.3 581.3 259.3 566.5L244.9 496.6C230.8 490.6 217.7 482.9 205.6 473.8L137.5 496.3C123.1 501.1 107.3 495.1 99.7 481.9L69.8 430.1C62.2 416.9 64.9 400.3 76.3 390.2L129.7 342.7C128.8 335.3 128.4 327.7 128.4 320C128.4 312.3 128.9 304.7 129.7 297.3L76.3 249.8C64.9 239.7 62.3 223 69.8 209.9L99.7 158.1C107.3 144.9 123.1 138.9 137.5 143.7L205.3 166.2C217.4 157.1 230.6 149.5 244.6 143.4L259.1 73.5zM320.3 400C364.5 399.8 400.2 363.9 400 319.7C399.8 275.5 363.9 239.8 319.7 240C275.5 240.2 239.8 276.1 240 320.3C240.2 364.5 276.1 400.2 320.3 400z"/></svg>
+      </button>
+
+      <div class="nav-spacer"></div>
+
+      <nav class="page-switch" aria-label="Page navigation">
+        <button class="page-switch-btn is-active" data-page-target="executorsPage">Executors</button>
+        <button class="page-switch-btn" data-page-target="scriptsPage">Scripts Hub</button>
+        <a
+          class="discord-nav-link themed-icon-control"
+          href="https://discord.gg/6X8cyjUcAj"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Official Discord"
+          title="Official Discord"
+        >
+          <svg viewBox="0 0 127.14 96.36" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M107.7 8.07A105.15 105.15 0 0081.47 0a72.06 72.06 0 00-3.36 6.83 97.68 97.68 0 00-29.94 0A72.37 72.37 0 0044.8 0 105.89 105.89 0 0018.57 8.08C1.03 34.37-3.72 60 1.39 85.28A105.73 105.73 0 0033.32 96a77.7 77.7 0 006.84-11.16 68.42 68.42 0 01-10.78-5.15c.91-.67 1.8-1.37 2.66-2.09a75.57 75.57 0 0063.48 0c.87.72 1.76 1.42 2.67 2.09a68.68 68.68 0 01-10.8 5.16A77.53 77.53 0 0094.24 96a105.25 105.25 0 0031.91-10.72c6-29.3-1-54.68-18.45-77.21zM42.45 65.69c-6.23 0-11.33-5.69-11.33-12.69s5-12.7 11.33-12.7S53.78 46 53.78 53s-5.03 12.69-11.33 12.69zm42.24 0c-6.23 0-11.33-5.69-11.33-12.69s5-12.7 11.33-12.7S96.02 46 96.02 53s-5.03 12.69-11.33 12.69z"/>
+          </svg>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="page-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-inner">
+        <div class="sidebar-header">
+          <h2 class="sidebar-title">Filters</h2>
+        </div>
+
+        <div id="filtersContent" class="filters-content">
+
+        <section class="filter-group">
+          <h3 class="filter-title">Platform</h3>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="platform" value="Windows" /> Windows</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="platform" value="macOS" /> macOS</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="platform" value="Android" /> Android</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="platform" value="iOS" /> iOS</label>
+        </section>
+
+        <section class="filter-group">
+          <h3 class="filter-title">Tags</h3>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="tags" value="Decompiler" /> Decompiler</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="tags" value="Kernel" /> Kernel</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="tags" value="AI" /> AI</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="tags" value="Supports VNG" /> Supports VNG</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="tags" value="Multi-instance" /> Multi-instance</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="tags" value="RakNet" /> RakNet</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="tags" value="Freemium" /> Freemium</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="tags" value="Invite-only" /> Invite-only</label>
+        </section>
+
+        <section class="filter-group">
+          <h3 class="filter-title">Cheat Type</h3>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="cheatType" value="Internal" /> Internal (Executor)</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="cheatType" value="External" /> External</label>
+        </section>
+
+        <section class="filter-group">
+          <h3 class="filter-title">Key System</h3>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="keySystem" value="Keyed" /> Keyed</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="keySystem" value="Keyless" /> Keyless</label>
+        </section>
+
+        <section class="filter-group">
+          <h3 class="filter-title">Price</h3>
+          <div class="price-controls">
+            <label><input id="priceFree" type="checkbox" class="price-checkbox" value="free" /> Free</label>
+            <label><input id="pricePaid" type="checkbox" class="price-checkbox" value="paid" /> Paid</label>
+            <label><input id="priceBoth" type="checkbox" class="price-checkbox" value="both" /> Free + Paid</label>
+          </div>
+        </section>
+
+        <hr class="sidebar-divider" />
+        <button id="resetFilters" class="btn-primary block">Reset filters</button>
+        </div>
+      </div>
+    </aside>
+
+
+    <main class="main-content">
+      <section id="executorsPage" class="app-page" data-page="executors">
+        <p class="seo-hero-subtitle" data-archive-trace="ARCHIVE NODE 03 FAILED TO RESPOND." title="Roblox executor insights and comparison tooling.">Roblox exploit directory with up-to-date statuses, sUNC scores, stability, and more</p>
+
+        <div class="legend no-text-select">
+          <div class="legend-item"><span class="legend-icon verified">✓</span><span>Verified</span></div>
+          <div class="legend-item"><span class="legend-icon warning" data-icon="warning"></span><span>Warning</span></div>
+          <div class="legend-item"><span class="legend-icon trending" data-icon="trending"></span><span>Trending</span></div>
+          <div class="legend-item"><span class="legend-icon internal">I</span><span>Internal</span></div>
+          <div class="legend-item"><span class="legend-icon external">E</span><span>External</span></div>
+          <div class="legend-item"><span class="legend-icon sunc">S</span><span>sUNC</span></div>
+        </div>
+
+        <section id="productGrid" class="product-grid" aria-live="polite" data-nosnippet></section>
+
+        <div id="noResults" class="no-results" hidden>
+          <p>No products match your filters</p>
+        </div>
+      </section>
+
+      <section id="scriptsPage" class="app-page" data-page="scripts" hidden>
+        <header class="subpage-header">
+          <h2>Scripts Hub</h2>
+        </header>
+
+        <div class="subtabs" role="tablist" aria-label="Scripts hub tabs">
+          <button class="subtab-btn is-active" role="tab" aria-selected="true" data-subtab-target="smartRankingsPanel">Smart Rankings</button>
+          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="comparisonPanel">Executor Comparison</button>
+          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="assistantPanel">Exploit Assistant [NEW]</button>
+          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="popularScriptsPanel">Popular Scripts [UPDATED]</button>
+          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="savedScriptsPanel">Saved Scripts</button>
+          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="recentChangesPanel">Recent Changes</button>
+        </div>
+
+        <section id="smartRankingsPanel" class="subtab-panel" role="tabpanel">
+          <h3>Smart Rankings</h3>
+          <div id="smartRankingSections" class="smart-ranking-sections"></div>
+        </section>
+
+        <section id="comparisonPanel" class="subtab-panel" role="tabpanel" hidden>
+          <h3>Executor Comparison</h3>
+          <p class="comparison-note">Select 2 to 3 executors to compare reliability, pricing, and risk at a glance</p>
+          <input id="comparisonSearchInput" class="comparison-search-input" type="text" placeholder="Search executors..." aria-label="Search executors for comparison" />
+          <div id="comparisonFilterChips" class="comparison-filter-chips"></div>
+          <div id="comparisonSelectedRow" class="comparison-selected-row" aria-live="polite"></div>
+          <div id="comparisonSelector" class="comparison-selector"></div>
+          <div id="comparisonWinnerSummary" class="comparison-winner-summary" hidden></div>
+          <div id="comparisonTableWrap" class="comparison-table-wrap" hidden>
+            <table id="comparisonTable" class="comparison-table"></table>
+          </div>
+          <div id="comparisonVerdicts" class="comparison-verdicts" hidden></div>
+        </section>
+
+        <section id="assistantPanel" class="subtab-panel" role="tabpanel" hidden>
+          <h3>Exploit Assistant</h3>
+          <p class="comparison-note">Ask about active executors, pricing, platforms, and risk. The assistant replies instantly using the latest executor data from this page</p>
+          <div id="assistantStarter" class="assistant-starter">
+          </div>
+          <div id="assistantMessages" class="assistant-messages" aria-live="polite"></div>
+          <form id="assistantForm" class="assistant-form">
+            <input id="assistantInput" class="assistant-input" type="text" placeholder="Example: Which executors are safest for beginners?" maxlength="260" />
+            <button id="assistantSendBtn" class="btn-primary" type="submit">Send</button>
+          </form>
+        </section>
+
+        <section id="popularScriptsPanel" class="subtab-panel" role="tabpanel" hidden>
+          <h3>Popular Scripts</h3>
+          <div id="popularScriptsList" class="script-list"></div>
+        </section>
+
+        <section id="savedScriptsPanel" class="subtab-panel" role="tabpanel" hidden>
+          <h3>Saved Scripts</h3>
+          <label class="input-label" for="savedScriptName">Script title</label>
+          <input id="savedScriptName" class="script-input" type="text" placeholder="Example: Auto Farm v2" />
+
+          <label class="input-label" for="savedScriptBody">Script content</label>
+          <textarea id="savedScriptBody" class="script-textarea" placeholder="Paste your script here..."></textarea>
+
+          <div class="saved-script-actions">
+            <button id="saveScriptBtn" class="btn-primary" type="button">Save Script</button>
+            <button id="deleteScriptBtn" class="btn-danger" type="button">Delete</button>
+          </div>
+
+          <div id="savedScriptError" class="saved-error" hidden>Please provide both a script title and script content</div>
+          <div id="savedScriptsList" class="saved-script-list"></div>
+        </section>
+
+        <section id="recentChangesPanel" class="subtab-panel" role="tabpanel" hidden>
+          <h3>Recent Changes</h3>
+          <ul id="recentChangesList" class="dev-list"></ul>
+        </section>
+      </section>
+
+    </main>
+  </div>
+
+  <div id="modalOverlay" class="modal-overlay" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal">
+      <button id="modalCloseBtn" class="modal-close" aria-label="Close modal">✕</button>
+      <div id="modalContent" class="modal-content"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" defer></script>
+  <script src="./lore.js?v=1.0.0" defer></script>
+  <script src="./data/executor-data.js?v=1.0.0" defer></script>
+  <script src="./data/popular-scripts.js?v=1.0.0" defer></script>
+  <script src="./script.js?v=2.0.18" defer></script>
+  <!-- Sequence clue: Logo -> Search -> Subtitle -> Featured -> Logo -->
+</body>
+</html>

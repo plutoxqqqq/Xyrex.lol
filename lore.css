@@ -1,0 +1,235 @@
+:root {
+  --lore-accent: #8f7bff;
+  --lore-cyan: #6fffe3;
+  --lore-danger: #ff3e5f;
+  --lore-danger-soft: rgba(255, 62, 95, 0.32);
+}
+
+.xyrex-terminal,
+.xyrex-archive-modal { display: none; position: fixed; inset: 0; z-index: 1200; }
+.xyrex-terminal.is-open,
+.xyrex-archive-modal.is-open { display: block; }
+
+.lore-backdrop { position: absolute; inset: 0; background: rgba(4, 2, 12, 0.78); backdrop-filter: blur(2px); }
+.lore-panel {
+  position: relative; width: min(860px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); margin: 1rem auto;
+  border: 1px solid rgba(143, 123, 255, 0.4); border-radius: 14px;
+  background: linear-gradient(180deg, rgba(20, 15, 38, 0.96), rgba(8, 7, 16, 0.98));
+  color: #efeaff; box-shadow: 0 24px 60px rgba(0,0,0,0.56); font-family: "JetBrains Mono", monospace;
+}
+.lore-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid rgba(143, 123, 255, 0.25); }
+.lore-panel-close, .lore-submit { cursor: pointer; border-radius: 9px; }
+.lore-panel-close { border: 1px solid rgba(143, 123, 255, 0.35); background: #1b1534; color: #e1d9ff; padding: 7px 10px; }
+.lore-output { min-height: 300px; max-height: 370px; overflow: auto; padding: 12px 14px; font-size: 12.5px; }
+.lore-line { margin-bottom: 6px; white-space: pre-wrap; }
+.lore-line-muted { color: #9f93c7; }
+.lore-line-accent { color: var(--lore-cyan); }
+.lore-line-warning { color: #ffb7a1; }
+.lore-input-row { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(143, 123, 255, 0.25); }
+.lore-input { flex: 1; padding: 9px 12px; border-radius: 10px; border: 1px solid rgba(111, 255, 227, 0.28); background: #090712; color: #c2ffe9; }
+.lore-submit { border: 0; padding: 0 14px; background: linear-gradient(180deg, #7f67ff, #6149dc); color: #fff; }
+.archive-wrap { max-height: 70vh; overflow: auto; }
+.archive-log { padding: 12px 14px; border-bottom: 1px dashed rgba(143, 123, 255, 0.2); line-height: 1.45; }
+
+.lore-toast {
+  position: fixed; top: 16px; right: 16px; z-index: 1300;
+  border: 1px solid rgba(143,123,255,0.42); border-radius: 10px; padding: 10px 12px;
+  background: rgba(10, 9, 21, 0.95); color: #ece6ff; font: 600 12px/1.25 "JetBrains Mono", monospace;
+}
+
+#lore-corruption-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1098;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+#lore-corruption-overlay.is-active { opacity: 1; }
+#lore-corruption-overlay::before,
+#lore-corruption-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+#lore-corruption-overlay::before {
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.56) 100%);
+  animation: lore-scanline-move 7s linear infinite;
+}
+#lore-corruption-overlay::after {
+  background:
+    linear-gradient(105deg, transparent 10%, rgba(255, 62, 95, 0.05) 40%, transparent 65%),
+    repeating-linear-gradient(0deg, transparent 0 140px, rgba(255, 62, 95, 0.12) 140px 158px, transparent 158px 310px);
+  mix-blend-mode: screen;
+  animation: lore-glitch-bars 4.5s steps(2, jump-none) infinite;
+}
+
+.lore-overlay-noise,
+.lore-overlay-messages { position: absolute; inset: 0; }
+.lore-overlay-noise {
+  background-image: radial-gradient(rgba(255,255,255,0.085) 0.65px, transparent 0.65px);
+  background-size: 3px 3px;
+  opacity: 0.1;
+  animation: lore-noise-jitter 180ms steps(2, jump-none) infinite;
+}
+.lore-overlay-message {
+  position: absolute;
+  color: rgba(255, 100, 122, 0.78);
+  font: 700 11px/1 "JetBrains Mono", monospace;
+  text-transform: uppercase;
+  text-shadow: 1px 0 rgba(111,255,227,0.4), -1px 0 rgba(255,62,95,0.45);
+  animation: lore-text-corruption 1.8s linear forwards;
+}
+
+body.lore-corruption-l1,
+body.lore-corruption-l2,
+body.lore-corruption-l3 { position: relative; }
+
+body.lore-corruption-l1 .product-card,
+body.lore-corruption-l1 .executor-card,
+body.lore-corruption-l1 .card { box-shadow: 0 0 0 1px rgba(143, 123, 255, 0.14); }
+
+body.lore-corruption-l2,
+body.lore-corruption-l3 {
+  filter: saturate(0.96) contrast(1.02);
+}
+body.lore-corruption-l2::before,
+body.lore-corruption-l3::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1090;
+  background: linear-gradient(95deg, rgba(0, 255, 255, 0.02), rgba(255, 0, 68, 0.03));
+  mix-blend-mode: screen;
+  animation: lore-chromatic-offset 2.8s steps(2, end) infinite;
+}
+
+body.lore-corruption-l2 .xyrex-terminal .lore-panel,
+body.lore-corruption-l3 .xyrex-terminal .lore-panel,
+body.lore-corruption-l2 .xyrex-archive-modal .lore-panel,
+body.lore-corruption-l3 .xyrex-archive-modal .lore-panel {
+  background: linear-gradient(180deg, rgba(14, 8, 20, 0.98), rgba(5, 3, 8, 0.98));
+  border-color: rgba(255, 62, 95, 0.42);
+  box-shadow: 0 0 0 1px rgba(255,62,95,0.25), 0 26px 60px rgba(0,0,0,0.74);
+  animation: lore-border-flicker 2.8s steps(2, end) infinite;
+}
+body.lore-corruption-l3 .archive-log:nth-child(odd) { color: rgba(255, 182, 193, 0.9); }
+
+.lore-card-jitter { animation: lore-card-shake 360ms linear 1; }
+.lore-card-desync { animation: lore-glitch-jitter 420ms steps(2, end) 1; }
+.lore-card-infected {
+  box-shadow: 0 0 0 1px rgba(255, 62, 95, 0.32), 0 0 18px rgba(255, 62, 95, 0.22) !important;
+  animation: lore-infected-glow-pulse 1.3s ease-in-out infinite;
+}
+.lore-card-redacted::after {
+  content: 'NULL ENTRY DETECTED';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  letter-spacing: 0.1em;
+  color: rgba(255, 145, 156, 0.94);
+  background: repeating-linear-gradient(45deg, rgba(0,0,0,0.7) 0 10px, rgba(255,62,95,0.06) 10px 14px);
+  backdrop-filter: blur(0.5px);
+  pointer-events: none;
+}
+.lore-card-ghost::before {
+  content: attr(data-lore-title);
+  position: absolute;
+  inset: 9px;
+  color: rgba(255, 62, 95, 0.3);
+  text-shadow: -2px 0 rgba(0,255,255,0.2);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.lore-layout-drift { animation: lore-layout-drift 520ms ease-in-out 1; }
+.lore-layout-tear { animation: lore-layout-tear 420ms ease-in-out 1; transform-origin: center; }
+
+.lore-text-glitch {
+  position: relative;
+  animation: lore-text-corruption 620ms linear 1;
+  text-shadow: 1px 0 rgba(255, 62, 95, 0.65), -1px 0 rgba(111,255,227,0.7);
+}
+.lore-text-glitch::before,
+.lore-text-glitch::after {
+  content: attr(data-lore-glitch);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.84;
+}
+.lore-text-glitch::before { color: rgba(111,255,227,0.75); transform: translate(-1px, 0); }
+.lore-text-glitch::after { color: rgba(255, 62, 95, 0.78); transform: translate(1px, 0); }
+
+@keyframes lore-glitch-jitter {
+  0%,100% { transform: translate(0, 0) skew(0deg); }
+  25% { transform: translate(-2px, 1px) skew(0.8deg); }
+  50% { transform: translate(2px, -1px) skew(-1deg); }
+  75% { transform: translate(-1px, 1px) skew(1deg); }
+}
+@keyframes lore-card-shake {
+  0%,100% { transform: translate3d(0,0,0); }
+  20% { transform: translate3d(-3px, 1px, 0); }
+  40% { transform: translate3d(2px, -2px, 0); }
+  60% { transform: translate3d(-2px, 2px, 0); }
+  80% { transform: translate3d(2px, 1px, 0); }
+}
+@keyframes lore-border-flicker {
+  0%,100% { border-color: rgba(255, 62, 95, 0.24); }
+  38% { border-color: rgba(111, 255, 227, 0.4); }
+  62% { border-color: rgba(255, 62, 95, 0.74); }
+}
+@keyframes lore-chromatic-offset {
+  0%,100% { transform: translateX(0); }
+  50% { transform: translateX(1px); }
+}
+@keyframes lore-text-corruption {
+  0%,100% { clip-path: inset(0 0 0 0); }
+  35% { clip-path: inset(65% 0 5% 0); }
+  70% { clip-path: inset(10% 0 58% 0); }
+}
+@keyframes lore-scanline-move { from { background-position: 0 0, 0 0; } to { background-position: 0 260px, 0 0; } }
+@keyframes lore-glitch-bars {
+  0%,100% { transform: translateY(0); opacity: 0.35; }
+  50% { transform: translateY(-18px); opacity: 0.58; }
+}
+@keyframes lore-infected-glow-pulse {
+  0%,100% { box-shadow: 0 0 0 1px rgba(255, 62, 95, 0.3), 0 0 14px rgba(255, 62, 95, 0.12); }
+  50% { box-shadow: 0 0 0 1px rgba(255, 62, 95, 0.75), 0 0 26px rgba(255, 62, 95, 0.36); }
+}
+@keyframes lore-layout-drift {
+  0%,100% { transform: translate(0,0) skew(0deg); }
+  30% { transform: translate(2px, -1px) skew(0.3deg); }
+  66% { transform: translate(-2px, 1px) skew(-0.35deg); }
+}
+@keyframes lore-layout-tear {
+  0%,100% { transform: translate(0,0) rotate(0deg); }
+  40% { transform: translate(-4px, 1px) rotate(-0.4deg); }
+  75% { transform: translate(3px, -2px) rotate(0.35deg); }
+}
+@keyframes lore-noise-jitter { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-1px, 1px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  #lore-corruption-overlay::before,
+  #lore-corruption-overlay::after,
+  .lore-overlay-noise,
+  .lore-card-jitter,
+  .lore-card-desync,
+  .lore-layout-drift,
+  .lore-layout-tear,
+  .lore-text-glitch,
+  .lore-card-infected,
+  body.lore-corruption-l2::before,
+  body.lore-corruption-l3::before,
+  body.lore-corruption-l2 .xyrex-terminal .lore-panel,
+  body.lore-corruption-l3 .xyrex-terminal .lore-panel,
+  body.lore-corruption-l2 .xyrex-archive-modal .lore-panel,
+  body.lore-corruption-l3 .xyrex-archive-modal .lore-panel { animation: none !important; }
+
+  #lore-corruption-overlay { opacity: 0.22 !important; }
+  .lore-overlay-message { animation-duration: 0.4s; }
+}

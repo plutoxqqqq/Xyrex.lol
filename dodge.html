@@ -1,0 +1,2535 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Xyrex Dodge | Play the Built-In Dodge Game</title>
+  <meta name="description" content="Play Xyrex Dodge, the built-in reflex game with missions, progression, responsive controls, and unlockable rewards." />
+  <meta name="theme-color" content="#6f6bff" />
+  <link rel="canonical" href="https://xyrex.lol/dodge.html" />
+  <link rel="icon" type="image/x-icon" href="./favicon.ico" sizes="16x16 32x32 48x48" />
+  <link rel="icon" href="./favicon.ico" sizes="any" />
+  <link rel="shortcut icon" href="./favicon.ico" />
+  <script>
+    (function () {
+      // Same account-scoped storage used by the main site, so Dodge saves,
+      // themes, and UI mode follow the active Xyrex account.
+      const GLOBAL_PREFIX = '__xyrex_global__';
+      const CURRENT_ACCOUNT_KEY = `${GLOBAL_PREFIX}current_account`;
+      const listeners = new Set();
+      const originalGetItem = localStorage.getItem.bind(localStorage);
+      const originalSetItem = localStorage.setItem.bind(localStorage);
+      const originalRemoveItem = localStorage.removeItem.bind(localStorage);
+
+      let activeAccount = originalGetItem(CURRENT_ACCOUNT_KEY) || 'guest';
+
+      function scopedKey(key) {
+        const value = String(key || '');
+        if (value.startsWith(GLOBAL_PREFIX)) return value;
+        return `acct:${activeAccount}:${value}`;
+      }
+
+      localStorage.getItem = key => originalGetItem(scopedKey(key));
+      localStorage.setItem = (key, value) => originalSetItem(scopedKey(key), value);
+      localStorage.removeItem = key => originalRemoveItem(scopedKey(key));
+
+      // Earlier Dodge builds wrote to unscoped keys; migrate once so nobody
+      // loses coins or progress when the page becomes account-aware.
+      ['xyrex_dodge_v3'].forEach(key => {
+        const legacy = originalGetItem(key);
+        if (legacy !== null && originalGetItem(scopedKey(key)) === null) {
+          originalSetItem(scopedKey(key), legacy);
+        }
+      });
+
+      const XyrexAccountScopeApi = Object.freeze({
+        getAccount() {
+          return activeAccount;
+        },
+        setAccount(nextAccount) {
+          const normalized = String(nextAccount || '').trim().toLowerCase() || 'guest';
+          activeAccount = normalized;
+          originalSetItem(CURRENT_ACCOUNT_KEY, normalized);
+          listeners.forEach(listener => {
+            try {
+              listener(normalized);
+            } catch {
+              // no-op
+            }
+          });
+        },
+        onAccountChange(callback) {
+          if (typeof callback !== 'function') return () => {};
+          listeners.add(callback);
+          return () => listeners.delete(callback);
+        },
+        clearAccount() {
+          this.setAccount('guest');
+        }
+      });
+      Object.defineProperty(window, 'XyrexAccountScope', { value: XyrexAccountScopeApi, writable: false, configurable: false });
+    })();
+  </script>
+  <script src="./data/theme.js?v=1.0.1"></script>
+  <style>
+    :root{
+      --bg: #06070d;
+      --bg-2: #0a0c14;
+      --panel: #111426;
+      --panel-2: #12172b;
+      --card: #12162a;
+      --text: #eef1ff;
+      --muted: #aeb5d6;
+      --periwinkle: #8f9cff;
+      --periwinkle-2: #b2bcff;
+      --accent-warning: #f0c36f;
+      --accent-danger: #ff4d6d;
+      --accent-success: #5dd39e;
+      --surface: var(--panel);
+      --surface-2: var(--bg-2);
+      --surface-3: var(--panel-2);
+      --text-soft: var(--muted);
+      --accent: var(--periwinkle);
+      --accent-hover: #a1adff;
+      --accent-soft: var(--periwinkle-2);
+      --accent-border: rgba(143,156,255,.44);
+      --accent-glow: rgba(178,188,255,.38);
+      --border: rgba(255,255,255,.11);
+      --border-strong: rgba(255,255,255,.24);
+      --success: var(--accent-success);
+      --warning: var(--accent-warning);
+      --danger: var(--accent-danger);
+      --soft-shadow: 0 10px 24px rgba(0,0,0,0.35);
+      --radius: 14px;
+      --max-width: 1240px;
+      --motion-fast: 190ms;
+      --motion-med: 320ms;
+      --motion-ease: cubic-bezier(.2,.78,.2,1);
+      --motion-ease-soft: cubic-bezier(.22,.64,.24,1);
+      --nav-height: 68px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    *{ box-sizing:border-box; }
+    *{
+      scrollbar-width:thin;
+      scrollbar-color:rgba(178,188,255,.72) rgba(9,12,26,.38);
+    }
+    *::-webkit-scrollbar{ width:10px; height:10px; }
+    *::-webkit-scrollbar-track{ background:rgba(9,12,26,.38); border-radius:999px; }
+    *::-webkit-scrollbar-thumb{ background:linear-gradient(180deg, rgba(178,188,255,.88), rgba(129,146,255,.72)); border:2px solid rgba(9,12,26,.72); border-radius:999px; }
+    *::-webkit-scrollbar-corner{ background:transparent; }
+
+    html, body{
+      margin:0;
+      min-height:100%;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      color:var(--text);
+      background-color:var(--bg);
+      background-image: radial-gradient(circle at top right, #1b2141, transparent 45%), linear-gradient(180deg, var(--bg), var(--bg-2));
+      background-attachment:fixed;
+      overflow-x:hidden;
+    }
+    a{ color:inherit; text-decoration:none; }
+    button{ font-family:inherit; }
+
+    /* ── Top navigation (matches the main site) ─────────────────────────── */
+    .topnav{
+      position:sticky;
+      inset:0 0 auto 0;
+      z-index:70;
+      padding-top:var(--safe-top);
+      padding-left:env(safe-area-inset-left, 0px);
+      padding-right:env(safe-area-inset-right, 0px);
+      background:rgba(8, 10, 18, 0.88);
+      border-bottom:1px solid rgba(178,188,255,0.16);
+      backdrop-filter:blur(12px);
+    }
+    .topnav .nav-inner{
+      width:min(100%, var(--max-width));
+      margin:0 auto;
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:1rem;
+      padding:12px 16px;
+    }
+    .brand{ font-weight:800; letter-spacing:.6px; color:var(--periwinkle-2); font-size:1rem; white-space:nowrap; }
+    .brand-crumb{ color:var(--muted); font-weight:700; font-size:.92rem; white-space:nowrap; user-select:none; }
+    .brand-crumb strong{ color:var(--text); }
+    .nav-spacer{ flex:1; }
+    .nav-stats{ display:flex; gap:14px; align-items:center; }
+    .nav-stat{ text-align:center; min-width:44px; }
+    .nav-stat-val{ font-size:1.02rem; font-weight:800; line-height:1.1; color:var(--text); }
+    .nav-stat-lbl{ font-size:.64rem; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
+    .themed-icon-control{
+      display:inline-flex; align-items:center; justify-content:center;
+      color:var(--muted); inline-size:34px; block-size:34px;
+      border:0; background:transparent; padding:0; cursor:pointer;
+      transition:color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease-soft);
+    }
+    .themed-icon-control:hover{ color:var(--periwinkle-2); transform:translateY(-1px); }
+    .themed-icon-control:focus-visible{ outline:2px solid rgba(178,188,255,.55); outline-offset:4px; border-radius:8px; }
+    .themed-icon-control svg{ width:21px; height:21px; }
+    .page-switch{ display:flex; gap:8px; min-width:0; align-items:center; }
+    .page-switch-btn{
+      border:1px solid rgba(178,188,255,.28); background:rgba(17,24,46,.9); color:var(--muted);
+      border-radius:999px; padding:10px 14px; min-height:44px; font-weight:700; cursor:pointer;
+      display:inline-flex; align-items:center; line-height:1.25; white-space:nowrap;
+      transition:border-color var(--motion-fast) var(--motion-ease), background var(--motion-med) var(--motion-ease-soft), color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease-soft);
+    }
+    .page-switch-btn:hover{ border-color:rgba(178,188,255,.6); color:var(--text); transform:translateY(-1px); }
+    .page-switch-btn.is-active{ color:#090d1d; border-color:transparent; background:linear-gradient(90deg,#8192ff,#adb8ff); box-shadow:0 10px 18px rgba(129,146,255,.24); }
+
+    /* ── Page layout ─────────────────────────────────────────────────────── */
+    .dodge-layout{
+      width:min(100%, var(--max-width));
+      margin:0 auto;
+      padding:16px max(16px, env(safe-area-inset-left, 0px)) calc(24px + var(--safe-bottom)) max(16px, env(safe-area-inset-right, 0px));
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 320px;
+      gap:20px;
+      align-items:start;
+    }
+
+    .board, .side-panel{
+      background:linear-gradient(180deg, rgba(17,20,38,.86), rgba(12,15,28,.86));
+      border-radius:var(--radius);
+      border:1px solid rgba(178,188,255,.16);
+      box-shadow:var(--soft-shadow);
+    }
+    .board{ overflow:hidden; min-width:0; }
+
+    /* ── Board toolbar ───────────────────────────────────────────────────── */
+    .board-toolbar{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:12px 14px; border-bottom:1px solid rgba(178,188,255,.14);
+      flex-wrap:wrap;
+    }
+    .run-badges{ display:flex; gap:6px; flex-wrap:wrap; }
+    .badge{
+      display:inline-flex; align-items:center; gap:5px; padding:5px 10px;
+      border-radius:999px; font-size:.8rem; font-weight:700;
+      border:1px solid rgba(178,188,255,.26); background:rgba(22,25,44,.68); color:#d8ddff;
+      font-variant-numeric:tabular-nums;
+    }
+    .badge-score{ border-color:rgba(143,156,255,.45); color:var(--periwinkle-2); }
+    .badge-coins{ border-color:rgba(240,195,111,.42); color:#ffdf9e; }
+    .badge-combo{ border-color:rgba(93,211,158,.42); color:#a9f6d3; }
+    .badge-lives{ border-color:rgba(255,77,109,.4); color:#ffaebc; }
+    .badge-stage{ color:var(--muted); }
+    .board-actions{ display:flex; gap:8px; }
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:6px;
+      border:1px solid rgba(178,188,255,.28); background:rgba(17,24,46,.9); color:var(--text);
+      border-radius:10px; padding:8px 14px; min-height:38px; font-size:.86rem; font-weight:700; cursor:pointer;
+      transition:border-color var(--motion-fast) var(--motion-ease), background var(--motion-med) var(--motion-ease-soft), color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease-soft);
+      white-space:nowrap;
+    }
+    .btn:hover{ border-color:rgba(178,188,255,.6); transform:translateY(-1px); }
+    .btn:active{ transform:translateY(0); }
+    .btn:disabled{ opacity:.5; cursor:not-allowed; transform:none; }
+    .btn-primary{
+      border:0; background:linear-gradient(90deg,#8192ff,#adb8ff); color:#090d1d;
+      box-shadow:0 0 0 1px color-mix(in srgb, var(--periwinkle-2) 16%, transparent), 0 14px 30px color-mix(in srgb, var(--periwinkle) 14%, transparent);
+    }
+    .btn-primary:hover{ filter:brightness(1.06); border:0; }
+    .btn-danger{ border-color:rgba(255,77,109,.4); color:#ffaebc; }
+    .btn-danger:hover{ border-color:rgba(255,77,109,.7); }
+    .btn-icon{ padding:8px 10px; min-width:38px; }
+
+    /* ── Canvas ──────────────────────────────────────────────────────────── */
+    .canvas-wrap{ position:relative; background:#05060d; border-bottom:1px solid rgba(178,188,255,.14); }
+    #gameCanvas{ display:block; width:100%; height:auto; aspect-ratio:960/580; touch-action:none; outline:none; }
+    .canvas-wrap:fullscreen{ display:flex; align-items:center; justify-content:center; background:#04050a; border:0; }
+    .canvas-wrap:fullscreen #gameCanvas{ width:min(100%, calc(100dvh * (960 / 580))); height:auto; }
+
+    .story-chip{
+      position:absolute; top:10px; left:10px; max-width:min(70%, 420px);
+      padding:8px 12px; border-radius:10px;
+      background:rgba(8,11,24,.78); border:1px solid rgba(178,188,255,.24);
+      backdrop-filter:blur(4px);
+      pointer-events:none;
+    }
+    .story-chip-title{ font-size:.78rem; font-weight:800; color:var(--periwinkle-2); }
+    .story-chip-goal{ font-size:.72rem; color:var(--muted); margin-top:2px; line-height:1.35; }
+
+    .game-toast{
+      position:absolute; top:12px; left:50%; transform:translate(-50%,-10px);
+      padding:7px 14px; border-radius:999px; font-size:.8rem; font-weight:700;
+      background:rgba(10,14,28,.9); border:1px solid rgba(178,188,255,.35); color:var(--periwinkle-2);
+      opacity:0; pointer-events:none;
+      transition:opacity var(--motion-fast) var(--motion-ease), transform var(--motion-med) var(--motion-ease-soft);
+      white-space:nowrap; max-width:88%; overflow:hidden; text-overflow:ellipsis;
+    }
+    .game-toast.show{ opacity:1; transform:translate(-50%,0); }
+    .game-toast.tone-gold{ color:#ffdf9e; border-color:rgba(240,195,111,.45); }
+    .game-toast.tone-success{ color:#a9f6d3; border-color:rgba(93,211,158,.45); }
+    .game-toast.tone-danger{ color:#ffaebc; border-color:rgba(255,77,109,.45); }
+
+    .overlay{
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      background:rgba(6,7,13,.72); backdrop-filter:blur(6px); padding:18px;
+    }
+    .overlay[hidden]{ display:none; }
+    .ov-card{
+      width:min(440px, 100%); text-align:center;
+      border-radius:12px; padding:24px 26px;
+      background:linear-gradient(180deg,color-mix(in srgb, var(--panel) 90%, var(--bg) 10%), color-mix(in srgb, var(--panel-2) 88%, var(--bg-2) 12%));
+      border:1px solid rgba(178,188,255,.25);
+      box-shadow:0 18px 48px rgba(0,0,0,.62);
+    }
+    .ov-kicker{ font-size:.72rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--periwinkle-2); margin-bottom:6px; }
+    .ov-card h2{ margin:0 0 8px; font-size:1.5rem; letter-spacing:-.01em; }
+    .ov-card p{ margin:0 0 14px; color:var(--muted); font-size:.9rem; line-height:1.5; }
+    .ov-keys{ display:flex; justify-content:center; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+    .ov-key{ font-size:.72rem; color:var(--muted); border:1px solid rgba(178,188,255,.22); border-radius:6px; padding:3px 8px; background:rgba(8,11,24,.6); }
+    .ov-key b{ color:var(--text); }
+    .ov-actions{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+    .ov-actions .btn{ min-width:130px; }
+    .ov-stats{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin:14px 0 16px; }
+    .ov-stat{ background:rgba(8,11,24,.6); border:1px solid rgba(178,188,255,.18); border-radius:10px; padding:10px 12px; }
+    .ov-stat-val{ font-size:1.3rem; font-weight:800; font-variant-numeric:tabular-nums; }
+    .ov-stat-lbl{ font-size:.68rem; color:var(--muted); margin-top:2px; text-transform:uppercase; letter-spacing:.05em; }
+    .ov-pill{
+      display:inline-flex; align-items:center; gap:5px; padding:4px 12px; border-radius:999px;
+      font-size:.76rem; font-weight:800; margin-bottom:10px;
+      background:rgba(240,195,111,.14); border:1px solid rgba(240,195,111,.42); color:#ffdf9e;
+    }
+    .ov-pill.pill-muted{ background:rgba(178,188,255,.08); border-color:rgba(178,188,255,.28); color:var(--muted); }
+
+    /* ── Touch controls ─────────────────────────────────────────────────── */
+    .touch-controls{ display:none; gap:10px; padding:10px 14px; border-bottom:1px solid rgba(178,188,255,.14); }
+    .touch-controls .btn{ flex:1; min-height:52px; font-size:1.1rem; touch-action:manipulation; user-select:none; -webkit-user-select:none; }
+    @media (hover:none) and (pointer:coarse){
+      .touch-controls{ display:flex; }
+    }
+
+    /* ── Tabs ────────────────────────────────────────────────────────────── */
+    .tabs-nav{
+      display:flex; flex-wrap:wrap; gap:8px; padding:12px 14px;
+      border-bottom:1px solid rgba(178,188,255,.14);
+    }
+    .tab-btn{
+      border:1px solid rgba(178,188,255,.28); background:rgba(17,24,46,.9); color:var(--muted);
+      border-radius:999px; padding:8px 16px; min-height:38px; font-weight:700; font-size:.84rem; cursor:pointer;
+      transition:border-color var(--motion-fast) var(--motion-ease), background var(--motion-med) var(--motion-ease-soft), color var(--motion-fast) var(--motion-ease);
+    }
+    .tab-btn:hover{ color:var(--text); border-color:rgba(178,188,255,.5); }
+    .tab-btn.is-active{ color:#090d1d; border-color:transparent; background:linear-gradient(90deg,#8192ff,#adb8ff); box-shadow:0 10px 18px rgba(129,146,255,.24); }
+    .tab-panel{ padding:14px; }
+    .tab-panel[hidden]{ display:none; }
+
+    .group-title{
+      font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em;
+      color:var(--periwinkle-2); margin:0 0 10px;
+    }
+    .group + .group{ margin-top:16px; padding-top:16px; border-top:1px dashed rgba(178,188,255,.16); }
+
+    /* Modes */
+    .mode-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; }
+    .mode-card{
+      text-align:left; border:1px solid rgba(178,188,255,.2); border-radius:12px;
+      background:rgba(17,20,38,.7); color:var(--text); padding:12px; cursor:pointer;
+      transition:border-color var(--motion-fast) var(--motion-ease), background var(--motion-med) var(--motion-ease-soft), transform var(--motion-fast) var(--motion-ease-soft);
+      display:flex; flex-direction:column; gap:6px;
+    }
+    .mode-card:hover{ border-color:rgba(178,188,255,.46); transform:translateY(-2px); }
+    .mode-card.is-selected{ border-color:var(--accent-border); background:color-mix(in srgb, var(--periwinkle) 10%, rgba(17,20,38,.7)); box-shadow:0 0 0 1px var(--accent-border); }
+    .mode-name{ font-size:.95rem; font-weight:800; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .mode-desc{ font-size:.78rem; color:var(--muted); line-height:1.45; flex:1; }
+    .chip{
+      display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px;
+      font-size:.68rem; font-weight:700; border:1px solid rgba(178,188,255,.26);
+      background:rgba(22,25,44,.68); color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums;
+    }
+    .chip-accent{ border-color:rgba(143,156,255,.45); color:var(--periwinkle-2); }
+    .chip-gold{ border-color:rgba(240,195,111,.42); color:#ffdf9e; }
+    .chip-success{ border-color:rgba(93,211,158,.42); color:#a9f6d3; }
+
+    /* Loadout + shop */
+    .item-list{ display:grid; gap:8px; }
+    .item-row{
+      display:flex; align-items:flex-start; gap:10px; width:100%; text-align:left;
+      border:1px solid rgba(178,188,255,.2); border-radius:12px;
+      background:rgba(17,20,38,.7); color:var(--text); padding:10px 12px; cursor:pointer;
+      transition:border-color var(--motion-fast) var(--motion-ease), background var(--motion-med) var(--motion-ease-soft);
+    }
+    .item-row:hover{ border-color:rgba(178,188,255,.46); }
+    .item-row.is-selected{ border-color:var(--accent-border); background:color-mix(in srgb, var(--periwinkle) 10%, rgba(17,20,38,.7)); box-shadow:0 0 0 1px var(--accent-border); }
+    .item-row.is-locked{ opacity:.62; }
+    .item-icon{
+      width:34px; height:34px; border-radius:9px; flex:0 0 auto;
+      display:flex; align-items:center; justify-content:center; font-size:1rem;
+      background:rgba(8,11,24,.6); border:1px solid rgba(178,188,255,.18);
+    }
+    .item-body{ flex:1; min-width:0; }
+    .item-name{ font-size:.88rem; font-weight:800; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .item-desc{ font-size:.76rem; color:var(--muted); margin-top:2px; line-height:1.4; }
+    .theme-swatch{ width:12px; height:12px; border-radius:4px; flex:0 0 auto; border:1px solid rgba(255,255,255,.3); }
+    .buy-bar{ margin-top:10px; }
+    .buy-bar .btn{ width:100%; }
+
+    /* Progress */
+    .story-cards{ display:grid; gap:8px; }
+    .story-card{ border:1px solid rgba(178,188,255,.2); border-radius:12px; background:rgba(17,20,38,.7); padding:12px; }
+    .story-card.is-locked{ opacity:.55; }
+    .story-card.is-done{ border-color:rgba(93,211,158,.4); }
+    .story-card-title{ font-size:.88rem; font-weight:800; margin-bottom:3px; }
+    .story-card-desc{ font-size:.76rem; color:var(--muted); line-height:1.45; margin-bottom:8px; }
+    .story-card-footer{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .stat-row{ display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid rgba(178,188,255,.1); font-size:.84rem; }
+    .stat-row:last-child{ border-bottom:none; }
+    .stat-row-lbl{ color:var(--muted); }
+    .stat-row-val{ font-weight:700; font-variant-numeric:tabular-nums; }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    .side{ display:grid; gap:14px; min-width:0; }
+    .side-panel{ padding:14px; }
+    .panel-title{
+      font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em;
+      color:var(--periwinkle-2); margin:0 0 10px;
+    }
+    .status-bar{
+      padding:10px 12px; border-radius:10px; font-size:.84rem; line-height:1.45;
+      border:1px solid rgba(178,188,255,.2); background:rgba(8,11,24,.6); color:var(--muted);
+      min-height:42px; display:flex; align-items:center;
+      transition:border-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+    }
+    .status-bar.ok{ border-color:rgba(93,211,158,.4); color:#a9f6d3; }
+    .status-bar.warn{ border-color:rgba(240,195,111,.42); color:#ffdf9e; }
+    .status-bar.danger{ border-color:rgba(255,77,109,.42); color:#ffaebc; }
+
+    .mission-title{ font-size:.9rem; font-weight:800; }
+    .mission-desc{ font-size:.78rem; color:var(--muted); margin-top:3px; line-height:1.45; }
+    .progress-track{ height:6px; border-radius:999px; background:rgba(178,188,255,.14); overflow:hidden; margin:10px 0; }
+    .progress-fill{ height:100%; border-radius:inherit; background:linear-gradient(90deg,#8192ff,#adb8ff); transition:width var(--motion-med) var(--motion-ease-soft); }
+    .mission-footer{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+    .streak-note{ font-size:.72rem; color:var(--muted); margin-top:8px; }
+
+    .cheat-row{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:8px 0; border-bottom:1px solid rgba(178,188,255,.1);
+    }
+    .cheat-row:last-of-type{ border-bottom:none; }
+    .cheat-label{ font-size:.84rem; }
+    .cheat-sub{ display:block; font-size:.7rem; color:var(--muted); margin-top:1px; }
+    .cheat-check{
+      appearance:none; -webkit-appearance:none; width:18px; height:18px; margin:0;
+      border:1px solid rgba(178,188,255,.7); border-radius:5px; background:rgba(21,30,62,.96);
+      cursor:pointer; position:relative; flex:0 0 auto;
+    }
+    .cheat-check:checked{ background:var(--periwinkle); border-color:var(--periwinkle-2); }
+    .cheat-check:checked::after{
+      content:''; position:absolute; left:6px; top:2px; width:4px; height:9px;
+      border:solid #090d1d; border-width:0 2px 2px 0; transform:rotate(45deg);
+    }
+    .cheat-note{ font-size:.72rem; color:#ffd7a8; margin-top:10px; line-height:1.4; }
+
+    .keys-list{ display:grid; gap:6px; }
+    .keys-row{ display:flex; align-items:center; justify-content:space-between; font-size:.78rem; color:var(--muted); }
+    .kbd{
+      font-size:.7rem; font-weight:700; color:var(--text);
+      border:1px solid rgba(178,188,255,.28); border-bottom-width:2px; border-radius:6px;
+      padding:2px 7px; background:rgba(8,11,24,.6); white-space:nowrap;
+    }
+
+    /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 1080px){
+      .dodge-layout{ grid-template-columns:minmax(0,1fr) 280px; gap:14px; }
+    }
+    @media (max-width: 920px){
+      .dodge-layout{ grid-template-columns:1fr; }
+      .side{ grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); }
+    }
+    @media (max-width: 720px){
+      .topnav .nav-inner{ gap:10px; padding:10px 12px; }
+      .nav-stat[data-optional]{ display:none; }
+      .page-switch-btn{ padding:7px 10px; min-height:38px; font-size:.8rem; }
+      .brand-crumb{ display:none; }
+      .dodge-layout{ padding-inline:max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px)); padding-block:10px 20px; gap:12px; }
+      .board-toolbar{ padding:10px 12px; }
+      .board-actions{ width:100%; }
+      .board-actions .btn{ flex:1; }
+      .tab-panel{ padding:12px; }
+      .side{ grid-template-columns:1fr; }
+      /* The canvas is short on phones — keep overlay cards compact. */
+      .overlay{ padding:10px; }
+      .ov-card{ padding:14px 16px; }
+      .ov-card h2{ font-size:1.15rem; margin-bottom:6px; }
+      .ov-card p{ font-size:.78rem; margin-bottom:10px; }
+      .ov-kicker{ margin-bottom:4px; }
+      .ov-pill{ margin-bottom:8px; font-size:.7rem; }
+      .ov-stats{ grid-template-columns:repeat(3,1fr); gap:6px; margin:8px 0 12px; }
+      .ov-stat{ padding:6px 8px; }
+      .ov-stat-val{ font-size:.92rem; }
+      .ov-stat-lbl{ font-size:.58rem; }
+      .ov-actions .btn{ min-width:110px; min-height:34px; padding:6px 12px; }
+    }
+    @media (hover:none) and (pointer:coarse){
+      .ov-keys{ display:none; } /* keyboard hints mean nothing on touch */
+    }
+    @media (max-width: 420px){
+      .badge{ font-size:.72rem; padding:4px 8px; }
+      .nav-stats{ gap:10px; }
+    }
+    @media (prefers-reduced-motion: reduce){
+      *, *::before, *::after{
+        transition-duration:1ms !important;
+        animation-duration:1ms !important;
+        animation-iteration-count:1 !important;
+        scroll-behavior:auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="nav-inner">
+      <a class="brand" href="/" aria-label="Back to the Xyrex home page">Xyrex.lol</a>
+      <span class="brand-crumb">/ <strong>Dodge</strong></span>
+      <div class="nav-spacer"></div>
+      <div class="nav-stats" aria-label="Lifetime stats">
+        <div class="nav-stat"><div class="nav-stat-val" id="hdrCoins">0</div><div class="nav-stat-lbl">Coins</div></div>
+        <div class="nav-stat"><div class="nav-stat-val" id="hdrBest">0</div><div class="nav-stat-lbl">Best</div></div>
+        <div class="nav-stat" data-optional><div class="nav-stat-val" id="hdrRuns">0</div><div class="nav-stat-lbl">Runs</div></div>
+        <div class="nav-stat" data-optional><div class="nav-stat-val" id="hdrStreak">0</div><div class="nav-stat-lbl">Streak</div></div>
+      </div>
+      <button id="soundBtn" class="themed-icon-control" type="button" aria-label="Toggle sound" title="Toggle sound (M)">
+        <svg id="soundOnIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        <svg id="soundOffIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+      </button>
+      <nav class="page-switch" aria-label="Page navigation">
+        <a class="page-switch-btn" href="/executors">Executors</a>
+        <a class="page-switch-btn" href="/scripthub">Scripts Hub</a>
+        <span class="page-switch-btn is-active" aria-current="page">Dodge</span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="dodge-layout">
+    <section class="board" aria-label="Dodge game board">
+      <div class="board-toolbar">
+        <div class="run-badges" aria-label="Current run stats">
+          <span class="badge badge-score" id="badgeScore">Score 0</span>
+          <span class="badge badge-coins" id="badgeCoins">Coins 0</span>
+          <span class="badge badge-combo" id="badgeCombo">Combo 0</span>
+          <span class="badge badge-lives" id="badgeLives">Lives 1</span>
+          <span class="badge badge-stage" id="badgeStage">Easy</span>
+        </div>
+        <div class="board-actions">
+          <button class="btn btn-primary" id="primaryBtn" type="button">Launch run</button>
+          <button class="btn btn-danger" id="restartBtn" type="button" disabled>Restart</button>
+          <button class="btn btn-icon" id="fsBtn" type="button" aria-label="Fullscreen" title="Fullscreen (F)">⛶</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="gameCanvas" width="960" height="580" tabindex="0" aria-label="Dodge game — use the left and right arrow keys to change lanes"></canvas>
+        <div class="story-chip" id="storyChip" hidden>
+          <div class="story-chip-title" id="storyChipTitle"></div>
+          <div class="story-chip-goal" id="storyChipGoal"></div>
+        </div>
+        <div class="game-toast" id="gameToast" role="status"></div>
+        <div class="overlay" id="overlay"></div>
+      </div>
+
+      <div class="touch-controls" id="touchControls">
+        <button class="btn" id="touchLeft" type="button" aria-label="Move left">◀</button>
+        <button class="btn" id="touchRight" type="button" aria-label="Move right">▶</button>
+      </div>
+
+      <nav class="tabs-nav" role="tablist" aria-label="Game menus">
+        <button class="tab-btn is-active" role="tab" aria-selected="true" data-tab="modes" type="button">Modes</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="loadout" type="button">Loadout</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="shop" type="button">Shop</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="progress" type="button">Progress</button>
+      </nav>
+      <div class="tab-panel" id="tab-modes" role="tabpanel"></div>
+      <div class="tab-panel" id="tab-loadout" role="tabpanel" hidden></div>
+      <div class="tab-panel" id="tab-shop" role="tabpanel" hidden></div>
+      <div class="tab-panel" id="tab-progress" role="tabpanel" hidden></div>
+    </section>
+
+    <aside class="side" aria-label="Game panels">
+      <section class="side-panel">
+        <h2 class="panel-title">Status</h2>
+        <div class="status-bar" id="statusBar">Pick a mode, then press Space or Launch run.</div>
+      </section>
+
+      <section class="side-panel">
+        <h2 class="panel-title">Daily objective</h2>
+        <div id="missionSection"></div>
+      </section>
+
+      <section class="side-panel">
+        <h2 class="panel-title">Utilities</h2>
+        <div id="cheatPanel">
+          <div class="cheat-row">
+            <span class="cheat-label">Auto Pilot<span class="cheat-sub">The game AI plays for you</span></span>
+            <input class="cheat-check" type="checkbox" data-cheat="autoplay" aria-label="Toggle Auto Pilot" />
+          </div>
+          <div class="cheat-row">
+            <span class="cheat-label">No Death<span class="cheat-sub">Hazards shatter on contact</span></span>
+            <input class="cheat-check" type="checkbox" data-cheat="nodeath" aria-label="Toggle No Death" />
+          </div>
+          <div class="cheat-row">
+            <span class="cheat-label">Slow Time<span class="cheat-sub">Slows the whole wave grid</span></span>
+            <input class="cheat-check" type="checkbox" data-cheat="slowtime" aria-label="Toggle Slow Time" />
+          </div>
+          <div class="cheat-row">
+            <span class="cheat-label">Gap Warp<span class="cheat-sub">Instant, phase-through moves</span></span>
+            <input class="cheat-check" type="checkbox" data-cheat="ghost" aria-label="Toggle Gap Warp" />
+          </div>
+        </div>
+        <p class="cheat-note">Runs with utilities active earn no coins and never count toward bests, missions, or the campaign.</p>
+      </section>
+
+      <section class="side-panel" id="keysPanel">
+        <h2 class="panel-title">Controls</h2>
+        <div class="keys-list">
+          <div class="keys-row"><span>Change lane</span><span><span class="kbd">◀</span> <span class="kbd">▶</span> or <span class="kbd">A</span> <span class="kbd">D</span></span></div>
+          <div class="keys-row"><span>Launch / pause</span><span class="kbd">Space</span></div>
+          <div class="keys-row"><span>Restart run</span><span class="kbd">R</span></div>
+          <div class="keys-row"><span>Fullscreen</span><span class="kbd">F</span></div>
+          <div class="keys-row"><span>Mute</span><span class="kbd">M</span></div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+<script>
+(function () {
+  'use strict';
+
+  // ─── CONSTANTS ──────────────────────────────────────────────────────────────
+  const SAVE_KEY = 'xyrex_dodge_v3';
+  const W = 960, H = 580, LANES = 6;
+  const LANE_W = W / LANES;
+  const FREE_TOKENS = 5;
+  const PLAYER_W = 64, PLAYER_H = 26;
+  const PLAYER_Y = H - 72;
+  const PLAYER_TOP = PLAYER_Y - PLAYER_H / 2;
+  const PLAYER_BOT = PLAYER_Y + PLAYER_H / 2;
+  const SPAWN_Y = -60;
+  const BASE_LANE_RATE = 6;      // lanes per second at Balanced handling
+  const REACTION_BUFFER = 0.25;  // seconds of human reaction time patterns must respect
+  const GRAZE_DIST = 26;         // px of horizontal near-miss that counts as a graze
+
+  const MODIFIERS = {
+    Balanced: { price: 0,   desc: 'Standard handling and rewards',            playerSpeed: 1,   coinBonus: 1,    pressure: 1 },
+    Swift:    { price: 125, desc: '20% faster lane changes, slightly denser', playerSpeed: 1.2, coinBonus: 1,    pressure: 1.08 },
+    Fortune:  { price: 180, desc: '35% more coins, harder waves',             playerSpeed: 1,   coinBonus: 1.35, pressure: 1.14 },
+    Bulwark:  { price: 220, desc: 'Gentler waves, slower movement',           playerSpeed: 0.9, coinBonus: 0.92, pressure: 0.92 },
+    Chaos:    { price: 260, desc: 'Max rewards, max danger',                  playerSpeed: 1.1, coinBonus: 1.6,  pressure: 1.3 },
+  };
+
+  const POWERUPS = {
+    None:            { price: 0,   desc: 'No powerup equipped',                       icon: '○' },
+    Quickstep:       { price: 200, desc: 'Snap lane changes — no slide',              icon: '⚡' },
+    'Shield Matrix': { price: 280, desc: 'Start every run with an extra life',        icon: '🛡' },
+    'Lucky Drift':   { price: 190, desc: '+20% coin rewards per run',                 icon: '✦' },
+    'Time Bloom':    { price: 320, desc: 'Every 12 combo slows hazards for a moment', icon: '⏱' },
+    'Magnet Pulse':  { price: 240, desc: 'Shards drift toward your lane',             icon: '⊕' },
+  };
+
+  const VISUAL_THEMES = {
+    Neon:      { price: 0,   desc: 'Xyrex periwinkle default', accent: '#8f9cff', danger: '#ff4d6d', track: '#070a16' },
+    Amethyst:  { price: 180, desc: 'Purple tones',             accent: '#b490ff', danger: '#ff80c8', track: '#0c0818' },
+    Obsidian:  { price: 220, desc: 'Dark tactical cyan',       accent: '#56d9f5', danger: '#ff6c7a', track: '#050d14' },
+    Synthwave: { price: 260, desc: 'Vivid neon blend',         accent: '#f562c8', danger: '#ff5e5e', track: '#17082a' },
+  };
+
+  const UTILITY_SKINS = {
+    Pulse:  { price: 0,   desc: 'Feedback effects match your theme', fx: null },
+    Aurora: { price: 160, desc: 'Soft cyan effect highlights',       fx: '#6ce5ff' },
+    Ember:  { price: 210, desc: 'Warm orange effect highlights',     fx: '#ff9a5c' },
+    Prism:  { price: 280, desc: 'Color-cycling effect aura',         fx: 'prism' },
+  };
+
+  const STAGES = [
+    { name: 'Easy',      minScore: 0,   density: 1, secondGap: 0.95, interval: 1.18, speed: 0.85, minShift: 0, maxShift: 1, hazH: 34 },
+    { name: 'Medium',    minScore: 30,  density: 2, secondGap: 0.60, interval: 1.02, speed: 1.00, minShift: 0, maxShift: 2, hazH: 36 },
+    { name: 'Hard',      minScore: 75,  density: 2, secondGap: 0.32, interval: 0.86, speed: 1.12, minShift: 1, maxShift: 3, hazH: 40 },
+    { name: 'Very Hard', minScore: 135, density: 3, secondGap: 0.18, interval: 0.72, speed: 1.24, minShift: 1, maxShift: 4, hazH: 44 },
+    { name: 'Overdrive', minScore: 220, density: 3, secondGap: 0.12, interval: 0.62, speed: 1.36, minShift: 1, maxShift: 4, hazH: 44 },
+  ];
+
+  const GAME_MODES = {
+    Classic:  { desc: 'Steady survival with predictable scaling.',      speed: 1,    interval: 1,    pickups: 0.45, modeScore: 1,    obj: 'Survive and earn coins from clean dodges.' },
+    Blitz:    { desc: 'Denser patterns, faster waves, higher payout.',  speed: 1.22, interval: 0.78, pickups: 0.35, modeScore: 1.35, obj: 'Short high-pressure runs where reaction speed wins.' },
+    Gauntlet: { desc: 'Extended runs with harder formations.',          speed: 1.08, interval: 0.92, pickups: 0.5,  modeScore: 1.5,  obj: 'Survive elite waves and hold long combos.' },
+    Harvest:  { desc: 'Lower pressure with far more shard spawns.',     speed: 0.95, interval: 1.08, pickups: 0.82, modeScore: 0.95, obj: 'Farm coins and keep your combo alive.' },
+    Story:    { desc: 'Objective-based sectors with coin rewards.',     speed: 1,    interval: 1,    pickups: 0.55, modeScore: 1.15, obj: 'Complete each sector to advance the campaign.' },
+  };
+
+  const STORY_CHAPTERS = [
+    { id: 's1', title: 'Sector 1: Wake Protocol',   brief: 'Restore the first lane beacon.',              label: 'Reach 25 score and collect 4 shards',    targetScore: 25, targetPickups: 4, reward: 120 },
+    { id: 's2', title: 'Sector 2: Crosswind Array', brief: 'Maintain clean combos under turbulence.',     label: 'Reach 40 score and a 10 combo streak',   targetScore: 40, targetCombo: 10,  reward: 180 },
+    { id: 's3', title: 'Sector 3: Final Echo',      brief: 'High-score burst with your shield preserved.', label: 'Reach 60 score and finish with a life', targetScore: 60, requireLife: true, reward: 260 },
+  ];
+
+  const DAILY_OBJ = [
+    { id: 'run',    title: 'Finish 1 run',            desc: 'Complete any clean run in any mode',            reward: 90, type: 'run' },
+    { id: 'shards', title: 'Collect 3 shards',        desc: 'Collect at least 3 energy shards in one run',   reward: 90, type: 'pickups', target: 3 },
+    { id: 'coins',  title: 'Earn 25 coins',           desc: 'Finish one run with 25+ coins earned',          reward: 90, type: 'coins', target: 25 },
+    { id: 'pwrup',  title: 'Score 20 with a powerup', desc: 'Score 20+ while an owned powerup is equipped',  reward: 90, type: 'powerupScore', target: 20 },
+    { id: 'graze',  title: 'Graze 5 hazards',         desc: 'Slip past 5 hazards by a hair in one run',      reward: 90, type: 'grazes', target: 5 },
+  ];
+
+  const COMBO_TIERS = [
+    { min: 50, mult: 3 },
+    { min: 25, mult: 2 },
+    { min: 10, mult: 1.5 },
+    { min: 0,  mult: 1 },
+  ];
+
+  const DEFAULT = {
+    coins: 0, bestScore: 0, bestByMode: {}, totalRuns: 0, totalPickups: 0, totalGrazes: 0, longestCombo: 0,
+    dailyObjective: null, ownedModifiers: ['Balanced'], selectedModifier: 'Balanced',
+    ownedPowerups: [], selectedPowerup: 'None', ownedVisualThemes: ['Neon'],
+    selectedVisualTheme: 'Neon', selectedMode: 'Classic', storyProgress: 0,
+    storyRewardsClaimed: [], aiTokenDate: '', aiTokensUsedToday: 0, aiPurchasedTokens: 0,
+    activeCheats: [], utilitySkin: 'Pulse', ownedUtilitySkins: ['Pulse'],
+    dailyStreak: 0, lastDailyClaimDate: '', soundMuted: false,
+  };
+
+  // ─── HELPERS ────────────────────────────────────────────────────────────────
+  // Pristine browser references captured at load time, before any console
+  // script gets a chance to monkeypatch them to warp gameplay (rigged
+  // Math.random waves, fake animation-frame clocks) or intercept saves.
+  const rng = Math.random;
+  const imul = Math.imul;
+  const rAF = window.requestAnimationFrame.bind(window);
+  const cAF = window.cancelAnimationFrame.bind(window);
+  const storageGet = localStorage.getItem.bind(localStorage);
+  const storageSet = localStorage.setItem.bind(localStorage);
+
+  const clamp = (v, mn, mx) => Math.max(mn, Math.min(mx, v));
+  const pick = arr => arr[Math.floor(rng() * arr.length)];
+  const fmt = n => Number(n || 0).toLocaleString('en-US');
+  const qs = sel => document.querySelector(sel);
+  const escapeHtml = value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches || false;
+
+  function deepFreeze(value) {
+    if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+      Object.freeze(value);
+      Object.values(value).forEach(deepFreeze);
+    }
+    return value;
+  }
+  // Catalogs and balance tables are immutable: even if a reference ever leaks,
+  // prices, rewards and stage pacing cannot be edited from the console.
+  [MODIFIERS, POWERUPS, VISUAL_THEMES, UTILITY_SKINS, STAGES, GAME_MODES, STORY_CHAPTERS, DAILY_OBJ, COMBO_TIERS, DEFAULT].forEach(deepFreeze);
+
+  function weightedPick(cands) {
+    const total = cands.reduce((sum, c) => sum + c.w, 0);
+    if (total <= 0) return cands[0]?.l;
+    let roll = rng() * total;
+    for (const c of cands) {
+      roll -= c.w;
+      if (roll <= 0) return c.l;
+    }
+    return cands[cands.length - 1]?.l;
+  }
+
+  function comboMult(combo) {
+    return COMBO_TIERS.find(t => combo >= t.min)?.mult || 1;
+  }
+
+  function localDay() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // ─── STORAGE + ANTICHEAT ────────────────────────────────────────────────────
+  const ANTICHEAT_VERSION = 3;
+  const ANTICHEAT_SALT = 'xyrex.dodge.integrity.v3.2026';
+  const LEGACY_ANTICHEAT_VERSION = 2;
+  const LEGACY_ANTICHEAT_SALT = 'xyrex.dodge.integrity.v2.2026';
+  const LEDGER_KEY = 'xyrex_dodge_v3_ledger';
+  const MAX_SAFE_COINS = 250000;
+  const MAX_SAFE_SCORE = 100000;
+  const VALID_CHEATS = new Set(['autoplay', 'nodeath', 'slowtime', 'ghost']);
+
+  // Tracks exactly what this session last wrote so console edits to
+  // localStorage are detectable (and get clobbered by verified state).
+  let lastWrittenRaw = null;
+  let writeCounter = 0;
+
+  function stableStringify(value) {
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+    if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+    return JSON.stringify(value);
+  }
+
+  function mac(input) {
+    let h1 = 0x811c9dc5;
+    let h2 = 0x01000193 ^ input.length;
+    for (let i = 0; i < input.length; i++) {
+      const code = input.charCodeAt(i);
+      h1 ^= code;
+      h1 = imul(h1, 16777619);
+      h2 = imul(h2 ^ ((code << 7) | (i & 63)), 2246822519);
+    }
+    return `${(h1 >>> 0).toString(36)}.${(h2 >>> 0).toString(36)}`;
+  }
+
+  const checksum = (payload, writes) => mac(`${ANTICHEAT_SALT}:${SAVE_KEY}:${writes}:${stableStringify(payload)}`);
+  const ledgerMac = (writes, sum) => mac(`${ANTICHEAT_SALT}:ledger:${writes}:${sum}`);
+
+  function legacyChecksum(payload) {
+    const input = `${LEGACY_ANTICHEAT_SALT}:${stableStringify(payload)}`;
+    let hash = 2166136261;
+    for (let i = 0; i < input.length; i++) { hash ^= input.charCodeAt(i); hash = imul(hash, 16777619); }
+    return (hash >>> 0).toString(36);
+  }
+
+  function stripIntegrity(payload) {
+    const clean = { ...(payload || {}) };
+    delete clean.__xyrexIntegrity;
+    return clean;
+  }
+
+  function verifyStored(parsed, ledgerRaw) {
+    const meta = parsed?.__xyrexIntegrity;
+    if (!meta || meta.version !== ANTICHEAT_VERSION) return null;
+    if (!Number.isInteger(meta.writes) || meta.writes < 1 || typeof meta.checksum !== 'string') return null;
+    const clean = stripIntegrity(parsed);
+    if (meta.checksum !== checksum(clean, meta.writes)) return null;
+    let ledger = null;
+    try { ledger = JSON.parse(ledgerRaw); } catch { return null; }
+    if (!ledger || ledger.writes !== meta.writes || ledger.mac !== ledgerMac(meta.writes, meta.checksum)) return null;
+    return { data: clean, writes: meta.writes };
+  }
+
+  function numberInRange(value, fallback, min, max) {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return fallback;
+    return clamp(Math.trunc(next), min, max);
+  }
+
+  function listFromCatalog(value, catalog, required = []) {
+    const valid = new Set(Object.keys(catalog));
+    const next = Array.isArray(value) ? value.filter(item => valid.has(item)) : [];
+    required.forEach(item => { if (!next.includes(item)) next.unshift(item); });
+    return [...new Set(next)];
+  }
+
+  function sanitizeSaveData(input) {
+    const d = { ...DEFAULT, ...(input || {}) };
+    d.coins = numberInRange(d.coins, DEFAULT.coins, 0, MAX_SAFE_COINS);
+    d.bestScore = numberInRange(d.bestScore, DEFAULT.bestScore, 0, MAX_SAFE_SCORE);
+    d.totalRuns = numberInRange(d.totalRuns, DEFAULT.totalRuns, 0, 1000000);
+    d.totalPickups = numberInRange(d.totalPickups, DEFAULT.totalPickups, 0, 1000000);
+    d.totalGrazes = numberInRange(d.totalGrazes, DEFAULT.totalGrazes, 0, 10000000);
+    d.longestCombo = numberInRange(d.longestCombo, DEFAULT.longestCombo, 0, MAX_SAFE_SCORE);
+    d.storyProgress = numberInRange(d.storyProgress, DEFAULT.storyProgress, 0, STORY_CHAPTERS.length);
+    d.aiTokensUsedToday = numberInRange(d.aiTokensUsedToday, DEFAULT.aiTokensUsedToday, 0, FREE_TOKENS);
+    d.aiPurchasedTokens = numberInRange(d.aiPurchasedTokens, DEFAULT.aiPurchasedTokens, 0, 365);
+    d.dailyStreak = numberInRange(d.dailyStreak, DEFAULT.dailyStreak, 0, 3650);
+    d.soundMuted = d.soundMuted === true;
+    d.bestByMode = Object.fromEntries(Object.entries(d.bestByMode && typeof d.bestByMode === 'object' ? d.bestByMode : {}).filter(([mode]) => GAME_MODES[mode]).map(([mode, score]) => [mode, numberInRange(score, 0, 0, MAX_SAFE_SCORE)]));
+    d.ownedModifiers = listFromCatalog(d.ownedModifiers, MODIFIERS, ['Balanced']);
+    d.ownedPowerups = listFromCatalog(d.ownedPowerups, POWERUPS).filter(item => item !== 'None');
+    d.ownedVisualThemes = listFromCatalog(d.ownedVisualThemes, VISUAL_THEMES, ['Neon']);
+    d.ownedUtilitySkins = listFromCatalog(d.ownedUtilitySkins, UTILITY_SKINS, ['Pulse']);
+    d.storyRewardsClaimed = Array.isArray(d.storyRewardsClaimed) ? [...new Set(d.storyRewardsClaimed.filter(id => STORY_CHAPTERS.some(ch => ch.id === id)))] : [];
+    d.activeCheats = Array.isArray(d.activeCheats) ? [...new Set(d.activeCheats.map(item => String(item).toLowerCase()).filter(item => VALID_CHEATS.has(item)))] : [];
+    if (!MODIFIERS[d.selectedModifier] || !d.ownedModifiers.includes(d.selectedModifier)) d.selectedModifier = 'Balanced';
+    if (!POWERUPS[d.selectedPowerup]) d.selectedPowerup = 'None';
+    if (d.selectedPowerup !== 'None' && !d.ownedPowerups.includes(d.selectedPowerup)) d.selectedPowerup = 'None';
+    if (!VISUAL_THEMES[d.selectedVisualTheme] || !d.ownedVisualThemes.includes(d.selectedVisualTheme)) d.selectedVisualTheme = 'Neon';
+    if (!UTILITY_SKINS[d.utilitySkin] || !d.ownedUtilitySkins.includes(d.utilitySkin)) d.utilitySkin = 'Pulse';
+    if (!GAME_MODES[d.selectedMode]) d.selectedMode = 'Classic';
+    return d;
+  }
+
+  function load() {
+    try {
+      const raw = storageGet(SAVE_KEY);
+      if (!raw) return sanitizeSaveData({});
+      const parsed = JSON.parse(raw);
+      const verified = verifyStored(parsed, storageGet(LEDGER_KEY));
+      if (verified) {
+        writeCounter = verified.writes;
+        lastWrittenRaw = raw;
+        return sanitizeSaveData(verified.data);
+      }
+      // One-time migration of a legacy v2 save, only possible before the
+      // ledger exists; the first save() rewrites it in the v3 format.
+      const meta = parsed?.__xyrexIntegrity;
+      if (meta?.version === LEGACY_ANTICHEAT_VERSION && storageGet(LEDGER_KEY) === null) {
+        const clean = stripIntegrity(parsed);
+        if (typeof meta.checksum === 'string' && meta.checksum === legacyChecksum(clean)) {
+          return sanitizeSaveData(clean);
+        }
+      }
+      console.warn('Xyrex Dodge anticheat reset unverified save data.');
+      return sanitizeSaveData({});
+    } catch {}
+    return sanitizeSaveData({});
+  }
+
+  function save(d) {
+    try {
+      if (lastWrittenRaw !== null && storageGet(SAVE_KEY) !== lastWrittenRaw) {
+        console.warn('Xyrex Dodge anticheat: save data was modified outside the game — overwriting with verified state.');
+      }
+      const clean = sanitizeSaveData(stripIntegrity(d));
+      writeCounter += 1;
+      const sum = checksum(clean, writeCounter);
+      lastWrittenRaw = JSON.stringify({ ...clean, __xyrexIntegrity: { version: ANTICHEAT_VERSION, writes: writeCounter, checksum: sum } });
+      storageSet(SAVE_KEY, lastWrittenRaw);
+      storageSet(LEDGER_KEY, JSON.stringify({ writes: writeCounter, mac: ledgerMac(writeCounter, sum) }));
+    } catch {}
+  }
+
+  // ─── SOUND ──────────────────────────────────────────────────────────────────
+  const Sound = {
+    ctx: null,
+    muted: false,
+    unlock() {
+      if (this.ctx) {
+        if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+        return;
+      }
+      try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+    },
+    tone(freq, dur, { type = 'sine', vol = 0.12, slide = 0, delay = 0 } = {}) {
+      if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+      const t0 = this.ctx.currentTime + delay;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    },
+    play(name) {
+      switch (name) {
+        case 'move':    this.tone(240, 0.04, { type: 'square', vol: 0.05 }); break;
+        case 'pickup':  this.tone(660, 0.07, { vol: 0.1 }); this.tone(880, 0.09, { vol: 0.1, delay: 0.06 }); break;
+        case 'graze':   this.tone(1180, 0.05, { vol: 0.06 }); break;
+        case 'shield':  this.tone(150, 0.2, { type: 'sawtooth', vol: 0.14, slide: -70 }); break;
+        case 'death':   this.tone(220, 0.5, { type: 'sawtooth', vol: 0.16, slide: -170 }); break;
+        case 'stage':   [523, 659, 784].forEach((f, i) => this.tone(f, 0.09, { vol: 0.09, delay: i * 0.07 })); break;
+        case 'tier':    this.tone(880, 0.07, { vol: 0.09 }); this.tone(1108, 0.1, { vol: 0.09, delay: 0.06 }); break;
+        case 'buy':     this.tone(700, 0.08, { vol: 0.1 }); this.tone(1050, 0.12, { vol: 0.1, delay: 0.07 }); break;
+        case 'error':   this.tone(170, 0.13, { type: 'square', vol: 0.08 }); break;
+        case 'click':   this.tone(500, 0.03, { type: 'square', vol: 0.04 }); break;
+      }
+    }
+  };
+
+  // ─── THEME COLORS ───────────────────────────────────────────────────────────
+  const COLORS = {
+    accent: '#8f9cff', danger: '#ff4d6d', track: '#070a16',
+    pickup: '#5dd39e', fx: '#8f9cff', prism: false,
+  };
+
+  function shiftHex(hex, amount) {
+    const channel = offset => clamp(parseInt(hex.slice(offset, offset + 2), 16) + amount, 0, 255);
+    const toHex = v => v.toString(16).padStart(2, '0');
+    return `#${toHex(channel(1))}${toHex(channel(3))}${toHex(channel(5))}`;
+  }
+
+  function applyVisualTheme(themeName, skinName) {
+    const t = VISUAL_THEMES[themeName] || VISUAL_THEMES.Neon;
+    const s = UTILITY_SKINS[skinName] || UTILITY_SKINS.Pulse;
+    COLORS.accent = t.accent;
+    COLORS.danger = t.danger;
+    COLORS.track = t.track;
+    COLORS.dangerSoft = shiftHex(t.danger, 46);
+    COLORS.prism = s.fx === 'prism';
+    COLORS.fx = (!s.fx || s.fx === 'prism') ? t.accent : s.fx;
+  }
+
+  function prismColor(time) {
+    return `hsl(${Math.floor((time * 80) % 360)}, 90%, 70%)`;
+  }
+
+  // ─── PARTICLES ──────────────────────────────────────────────────────────────
+  class ParticleSystem {
+    constructor() { this.pool = []; }
+    emit(x, y, opts = {}) {
+      const count = opts.count || 1;
+      for (let i = 0; i < count; i++) {
+        const angle = opts.angle != null ? opts.angle + (rng() - 0.5) * (opts.spread ?? 0.6) : rng() * Math.PI * 2;
+        const speed = (opts.speed || 90) * (0.55 + rng() * 0.9);
+        this.pool.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1, maxLife: opts.life || 0.55,
+          size: opts.size || (rng() * 3.5 + 2),
+          color: opts.color || COLORS.accent,
+          gravity: opts.gravity || 0,
+        });
+      }
+      if (this.pool.length > 420) this.pool.splice(0, this.pool.length - 420);
+    }
+    update(dt) {
+      this.pool = this.pool.filter(p => {
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.gravity * dt;
+        p.life -= dt / p.maxLife;
+        return p.life > 0;
+      });
+    }
+    draw(ctx) {
+      for (const p of this.pool) {
+        ctx.globalAlpha = Math.max(0, p.life) * 0.85;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(0.4, p.size * p.life), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ─── ENGINE ─────────────────────────────────────────────────────────────────
+  // Closure-scoped taint marker for the current run. It lives outside the
+  // engine instance so a leaked reference can't scrub it the way a forged
+  // `assisted = false` write could; once a run is tainted (any utility active,
+  // or the debug simulator touching it) it can never earn coins or records.
+  let runTainted = false;
+
+  class DodgeEngine {
+    constructor(canvas, data, hooks = {}) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.data = data;
+      this.hooks = hooks;
+      this.state = 'idle'; // idle | running | paused | over
+      this.rafId = 0;
+      this.lastTs = 0;
+      this.time = 0;
+      this.stars = Array.from({ length: 84 }, () => ({
+        x: rng() * W, y: rng() * H,
+        z: 0.25 + rng() * 0.75, r: rng() * 1.4 + 0.4,
+      }));
+      this.ps = new ParticleSystem();
+      this.floaters = [];
+      this.refreshLoadout();
+      this._resetRunState();
+      this._loop = this._loop.bind(this);
+      this.rafId = rAF(this._loop);
+    }
+
+    refreshLoadout() {
+      const d = this.data;
+      this.modifier = MODIFIERS[d.selectedModifier] || MODIFIERS.Balanced;
+      this.mode = GAME_MODES[d.selectedMode] || GAME_MODES.Classic;
+      const owned = d.ownedPowerups || [];
+      this.powerups = new Set(d.selectedPowerup !== 'None' && owned.includes(d.selectedPowerup) ? [d.selectedPowerup] : []);
+      this.cheats = new Set((d.activeCheats || []).map(s => String(s).toLowerCase()).filter(c => VALID_CHEATS.has(c)));
+      applyVisualTheme(d.selectedVisualTheme, d.utilitySkin);
+    }
+
+    get hasCheats() { return this.cheats.size > 0; }
+
+    _resetRunState() {
+      runTainted = false;
+      this.elapsed = 0;
+      this.score = 0;
+      this.runCoins = 0;
+      this.combo = 0;
+      this.bestComboRun = 0;
+      this.grazes = 0;
+      this.storyPickups = 0;
+      this.blocks = [];
+      this.pickups = [];
+      this.spawnTimer = 0.6;
+      this.lastGap = null;
+      this.prevOpen = null;
+      this.sameGapStreak = 0;
+      this.bloomT = 0;
+      this.lastBloomCombo = 0;
+      this.invulnT = 0;
+      this.hitFlash = 0;
+      this.shake = 0;
+      this.assisted = false;
+      this.lastStage = STAGES[0];
+      this.lastTier = 1;
+      this.trailTimer = 0;
+      this.floaters = [];
+      this.ps = new ParticleSystem();
+      this.lives = this.powerups?.has('Shield Matrix') ? 2 : 1;
+      this.player = { x: 2 * LANE_W + LANE_W / 2, targetLane: 2, shieldFlash: 0 };
+    }
+
+    startRun() {
+      this.refreshLoadout();
+      this._resetRunState();
+      this.state = 'running';
+      this.hooks.onState?.(this.state);
+    }
+
+    pause() {
+      if (this.state !== 'running') return;
+      this.state = 'paused';
+      this.hooks.onState?.(this.state);
+    }
+
+    resume() {
+      if (this.state !== 'paused') return;
+      this.state = 'running';
+      this.hooks.onState?.(this.state);
+    }
+
+    toIdle() {
+      this.refreshLoadout();
+      this._resetRunState();
+      this.state = 'idle';
+      this.hooks.onState?.(this.state);
+    }
+
+    destroy() { cAF(this.rafId); }
+
+    stage() {
+      for (let i = STAGES.length - 1; i >= 0; i--) {
+        if (this.score >= STAGES[i].minScore) return STAGES[i];
+      }
+      return STAGES[0];
+    }
+
+    tier() { return comboMult(this.combo); }
+
+    laneRate() {
+      const quick = this.powerups.has('Quickstep') || this.cheats.has('ghost');
+      return BASE_LANE_RATE * this.modifier.playerSpeed * (quick ? 2.3 : 1);
+    }
+
+    dyScale() { return this.bloomT > 0 ? 0.8 : 1; }
+
+    _speed() {
+      const s = this.stage();
+      const slow = this.cheats.has('slowtime') ? 0.55 : 1;
+      const ramp = Math.min(this.elapsed, 150) * 3.2 + Math.min(this.score, 240) * 0.6;
+      return clamp((186 + ramp) * this.mode.speed * this.modifier.pressure * s.speed * slow, 110, 950);
+    }
+
+    _interval() {
+      const s = this.stage();
+      const slow = this.cheats.has('slowtime') ? 1.8 : 1;
+      const ramp = Math.min(this.elapsed, 150) * 0.0026 + Math.min(this.score, 240) * 0.0011;
+      // The floor keeps late-game waves survivable: below ~0.6s there is no
+      // time to clear one wave and still reach the next gap.
+      return clamp((1.32 - ramp) * this.mode.interval * s.interval * slow, 0.6, 2.4);
+    }
+
+    lanePos() { return this.player.x / LANE_W - 0.5; }
+
+    moveLane(dir) {
+      if (this.state !== 'running') return;
+      if (this.cheats.has('autoplay')) return; // pilot owns the stick
+      const step = dir === 'left' ? -1 : 1;
+      const next = clamp(this.player.targetLane + step, 0, LANES - 1);
+      if (next !== this.player.targetLane) {
+        this.player.targetLane = next;
+        Sound.play('move');
+      }
+    }
+
+    // ── Wave generation: every wave is guaranteed dodgeable ─────────────────
+    _spawnWave() {
+      const s = this.stage();
+      const v = this._speed();
+      const interval = this._interval();
+      const rate = this.laneRate();
+      const travelT = (PLAYER_TOP - SPAWN_Y - s.hazH) / v;
+      // The player must be able to reach the next gap both from spawn sight
+      // and inside one wave interval (waves chain: gap N → gap N+1). The 0.3s
+      // launch buffer covers the previous wave clearing the player's row.
+      const reach = Math.max(1, Math.floor((Math.min(travelT - REACTION_BUFFER, interval) - 0.3) * rate));
+      const ref = Number.isInteger(this.lastGap) ? this.lastGap : clamp(Math.round(this.lanePos()), 0, LANES - 1);
+      // A player may be parked in ANY open lane of the previous wave, so the
+      // new gap must be reachable from all of them — otherwise the second
+      // gap becomes a trap.
+      const anchors = this.prevOpen && this.prevOpen.size ? [...this.prevOpen] : [ref];
+
+      const cands = [];
+      for (let l = 0; l < LANES; l++) {
+        if (!anchors.every(a => Math.abs(l - a) <= reach)) continue;
+        const dist = Math.abs(l - ref);
+        let w = 1;
+        if (dist < s.minShift) w *= 0.25;
+        if (dist > s.maxShift) w *= 0.3;
+        if (l === this.lastGap) w *= this.sameGapStreak >= 2 ? 0.12 : 0.55;
+        if (l === 0 || l === LANES - 1) w *= 0.8;
+        cands.push({ l, w });
+      }
+      let gap;
+      if (cands.length) {
+        gap = weightedPick(cands);
+      } else {
+        // No lane satisfies every anchor — take the one that minimizes the
+        // worst-case distance so no legal parking spot becomes a death trap.
+        gap = ref;
+        let bestWorst = Infinity;
+        for (let l = 0; l < LANES; l++) {
+          const worst = Math.max(...anchors.map(a => Math.abs(l - a)));
+          if (worst < bestWorst) { bestWorst = worst; gap = l; }
+        }
+      }
+      this.sameGapStreak = gap === this.lastGap ? this.sameGapStreak + 1 : 0;
+      this.lastGap = gap;
+
+      const open = new Set([gap]);
+      if (rng() < s.secondGap) {
+        const extras = [];
+        const maxSpread = Math.max(1, Math.min(2, reach));
+        for (let l = 0; l < LANES; l++) if (!open.has(l) && Math.abs(l - gap) <= maxSpread) extras.push(l);
+        if (extras.length) open.add(pick(extras));
+      }
+
+      const closed = [];
+      for (let l = 0; l < LANES; l++) if (!open.has(l)) closed.push(l);
+      // A lane farther than `reach` from the gap must never stay open: a
+      // player parked there could not chain to the next wave's opening.
+      // Within that radius, blocking stays random so patterns keep variety.
+      const forced = closed.filter(l => Math.abs(l - gap) > reach);
+      const optional = closed.filter(l => Math.abs(l - gap) <= reach);
+      const densityBonus = Math.floor(Math.min(this.score, 240) / 120);
+      let blockCount = clamp(s.density + densityBonus, 1, LANES - open.size);
+      if (s.name === 'Easy' || s.name === 'Medium') blockCount = Math.min(blockCount, LANES - 2);
+      blockCount = clamp(Math.max(blockCount, forced.length), 1, LANES - open.size);
+      optional.sort(() => rng() - 0.5);
+      const lanes = [...forced, ...optional.slice(0, Math.max(0, blockCount - forced.length))].sort((a, b) => a - b);
+
+      // Every lane the player can legally occupy this wave anchors the next gap.
+      this.prevOpen = new Set([...Array(LANES).keys()].filter(l => !lanes.includes(l)));
+
+      // Merge adjacent lanes into single wide hazards.
+      let i = 0;
+      while (i < lanes.length) {
+        let j = i;
+        while (j + 1 < lanes.length && lanes[j + 1] === lanes[j] + 1) j++;
+        const lane = lanes[i], span = j - i + 1;
+        this.blocks.push({
+          lane, span,
+          x: lane * LANE_W + 8, w: span * LANE_W - 16,
+          y: SPAWN_Y - s.hazH, h: s.hazH,
+          vy: v, grazed: false, seed: rng(),
+        });
+        i = j + 1;
+      }
+
+      if (rng() < this.mode.pickups) {
+        const lane = pick([...open]);
+        const jitter = (rng() - 0.5) * LANE_W * 0.3;
+        const px = clamp(lane * LANE_W + LANE_W / 2 + jitter, lane * LANE_W + 18, (lane + 1) * LANE_W - 18);
+        this.pickups.push({ lane, x: px, y: SPAWN_Y - s.hazH - 64, size: 10, vy: v * 0.8, glow: rng() * 4 });
+      }
+    }
+
+    // ── Honest autopilot: plans reachable escapes, never edits the board ────
+    _laneIntervals(horizon = 3.5) {
+      const per = Array.from({ length: LANES }, () => []);
+      const scale = this.dyScale();
+      for (const b of this.blocks) {
+        const v = b.vy * scale;
+        if (v <= 0 || b.y > PLAYER_BOT + 8) continue;
+        const enter = b.y + b.h >= PLAYER_TOP - 6 ? 0 : (PLAYER_TOP - 6 - (b.y + b.h)) / v;
+        if (enter > horizon) continue;
+        const exit = Math.max((PLAYER_BOT + 8 - b.y) / v, enter + 0.01);
+        for (let l = b.lane; l < b.lane + b.span; l++) per[l].push([enter, exit]);
+      }
+      per.forEach(list => list.sort((a, b) => a[0] - b[0]));
+      return per;
+    }
+
+    _autopilot() {
+      const horizon = 3.5;
+      const per = this._laneIntervals(horizon);
+      const rate = this.laneRate();
+      const p = this.lanePos();
+      let best = null;
+      // The ship is ~0.66 lane-widths wide against a hazard's x-range, so its
+      // edge enters a lane well before its center "arrives" — every window
+      // below accounts for that or the pilot dives through closing gaps.
+      const HALF = 0.66;
+      const evals = this.debugAI ? [] : null;
+      for (let L = 0; L < LANES; L++) {
+        const arrive = Math.abs(L - p) / rate;
+        const dir = Math.sign(L - p) || 1;
+        const lo = Math.min(L, Math.floor(p + 0.001));
+        const hi = Math.max(L, Math.ceil(p - 0.001));
+        let ok = true;
+        let margin = horizon;
+        for (let m = lo; m <= hi && ok; m++) {
+          // Signed travel distance until the ship is centred on lane m; for
+          // lanes behind the ship this goes negative, so lanes it has
+          // already cleared are skipped and lanes it is still sliding out of
+          // get the correct short exit window.
+          const d = dir >= 0 ? m - p : p - m;
+          let tIn, tOut;
+          if (m === L) {
+            tIn = Math.max(0, (d - HALF) / rate);
+            tOut = horizon;
+          } else {
+            tOut = (d + HALF) / rate;
+            if (tOut <= 0) continue; // fully past this lane already
+            tIn = Math.max(0, (d - HALF) / rate);
+          }
+          for (const [enter, exit] of per[m]) {
+            if (enter > tOut) break;
+            if (exit + 0.06 < tIn) continue;
+            if (m === L) {
+              // Blocked if the hazard is in the lane any time between the
+              // ship's edge poking in and shortly after full arrival.
+              if (enter <= arrive + 0.2 && exit + 0.06 >= tIn) { ok = false; break; }
+              if (enter > arrive + 0.2) margin = Math.min(margin, enter - arrive);
+            } else { ok = false; break; }
+          }
+        }
+        if (!ok) { evals?.push({ L, ok: false }); continue; }
+        let util = Math.min(margin, horizon) - Math.abs(L - p) * 0.05 - ((L === 0 || L === LANES - 1) ? 0.08 : 0);
+        if (L === this.player.targetLane) util += 0.15; // hysteresis, stops jitter
+        // Chase shards only when the lane is comfortably safe.
+        if (margin >= 1.2) {
+          for (const pk of this.pickups) {
+            if (pk.lane !== L) continue;
+            const tp = (PLAYER_Y - pk.y) / (pk.vy * this.dyScale());
+            if (tp > arrive - 0.05 && tp < horizon && margin > tp + 0.5) { util += 0.35; break; }
+          }
+        }
+        evals?.push({ L, ok: true, margin: +margin.toFixed(2), util: +util.toFixed(2) });
+        if (!best || util > best.util) best = { L, util };
+      }
+      if (evals) {
+        this._aiTrace = this._aiTrace || [];
+        this._aiTrace.push({ t: +this.elapsed.toFixed(3), p: +p.toFixed(2), pick: best ? best.L : 'fallback', evals });
+        if (this._aiTrace.length > 200) this._aiTrace.shift();
+      }
+      if (best) {
+        this.player.targetLane = best.L;
+      } else {
+        // Fully cornered (should not happen with fair waves): head for the
+        // nearest lane whose first threat is furthest away — never trek
+        // across the board through hazards.
+        let bl = clamp(Math.round(p), 0, LANES - 1), bt = -Infinity;
+        for (let l = 0; l < LANES; l++) {
+          const t = per[l][0] ? per[l][0][0] : horizon;
+          const score = t - Math.abs(l - p) * 0.3;
+          if (score > bt) { bt = score; bl = l; }
+        }
+        this.player.targetLane = bl;
+      }
+    }
+
+    _updatePlayer(dt) {
+      if (this.cheats.has('autoplay')) {
+        this.assisted = true;
+        this._autopilot();
+      }
+      const targetX = this.player.targetLane * LANE_W + LANE_W / 2;
+      if (this.cheats.has('ghost')) {
+        this.assisted = true;
+        if (Math.abs(targetX - this.player.x) > 1) {
+          this.ps.emit(this.player.x, PLAYER_Y, { count: 5, life: 0.4, size: 4, color: COLORS.prism ? prismColor(this.time) : COLORS.fx, speed: 40 });
+        }
+        this.player.x = targetX;
+      } else {
+        const dx = targetX - this.player.x;
+        const step = this.laneRate() * LANE_W * dt;
+        if (Math.abs(dx) <= step) this.player.x = targetX;
+        else this.player.x += Math.sign(dx) * step;
+      }
+      this.trailTimer -= dt;
+      if (this.trailTimer <= 0) {
+        this.trailTimer = 0.035;
+        this.ps.emit(this.player.x + (rng() - 0.5) * 14, PLAYER_Y + PLAYER_H / 2, {
+          count: 1, life: 0.32, size: 2.6,
+          color: COLORS.prism ? prismColor(this.time) : COLORS.fx,
+          angle: Math.PI / 2, spread: 0.3, speed: 55,
+        });
+      }
+      if (this.player.shieldFlash > 0) this.player.shieldFlash -= dt;
+    }
+
+    _hitsPlayer(rect) {
+      const hw = PLAYER_W / 2, hh = PLAYER_H / 2;
+      if ('size' in rect) {
+        return rect.x >= this.player.x - hw && rect.x <= this.player.x + hw &&
+               rect.y >= PLAYER_Y - hh && rect.y <= PLAYER_Y + hh;
+      }
+      return !(this.player.x + hw < rect.x || this.player.x - hw > rect.x + rect.w ||
+               PLAYER_Y + hh < rect.y || PLAYER_TOP > rect.y + rect.h);
+    }
+
+    _grazes(b) {
+      if (b.y + b.h < PLAYER_TOP || b.y > PLAYER_BOT) return false;
+      const dx = Math.abs(this.player.x - (b.x + b.w / 2)) - (PLAYER_W / 2 + b.w / 2);
+      return dx > 0 && dx < GRAZE_DIST;
+    }
+
+    _rewardDodge(b) {
+      const mult = this.tier();
+      this.score += Math.max(1, Math.round(this.mode.modeScore * mult));
+      this.combo += 1;
+      this.bestComboRun = Math.max(this.bestComboRun, this.combo);
+      if (!this.assisted && !this.hasCheats && !runTainted) {
+        let coin = Math.max(1, Math.round(this.modifier.coinBonus));
+        if (this.powerups.has('Lucky Drift')) coin = Math.ceil(coin * 1.2);
+        if (mult >= 2) coin += 1;
+        this.runCoins += coin;
+      }
+      this.ps.emit(b.x + b.w / 2, H - 8, { count: 5, life: 0.4, size: 3.4, color: COLORS.prism ? prismColor(this.time) : COLORS.fx, angle: -Math.PI / 2, spread: 0.8, speed: 130 });
+      this._checkTier();
+      this._checkStage();
+      this._checkBloom();
+    }
+
+    _rewardGraze(b) {
+      this.grazes += 1;
+      this.combo += 2;
+      this.bestComboRun = Math.max(this.bestComboRun, this.combo);
+      if (!this.assisted && !this.hasCheats && !runTainted) this.runCoins += 1;
+      const side = this.player.x < b.x + b.w / 2 ? -1 : 1;
+      this.ps.emit(this.player.x + side * -PLAYER_W / 2, PLAYER_Y, { count: 8, life: 0.4, size: 3, color: '#ffffff', speed: 120 });
+      this._floater('GRAZE', this.player.x, PLAYER_TOP - 16, '#ffffff', 13);
+      Sound.play('graze');
+      this._checkTier();
+    }
+
+    _checkTier() {
+      const t = this.tier();
+      if (t > this.lastTier) {
+        this._floater(`COMBO ×${t}`, this.player.x, PLAYER_TOP - 34, COLORS.accent, 19);
+        Sound.play('tier');
+      }
+      this.lastTier = t;
+    }
+
+    _checkStage() {
+      const s = this.stage();
+      if (s !== this.lastStage) {
+        this.lastStage = s;
+        this.hooks.onToast?.(`Stage up: ${s.name}`, 'tone-gold');
+        Sound.play('stage');
+      }
+    }
+
+    _checkBloom() {
+      if (!this.powerups.has('Time Bloom')) return;
+      const step = Math.floor(this.combo / 12);
+      if (step > this.lastBloomCombo) {
+        this.lastBloomCombo = step;
+        this.bloomT = 2.4;
+        this._floater('TIME BLOOM', this.player.x, PLAYER_TOP - 52, '#9be8ff', 15);
+      }
+    }
+
+    _floater(text, x, y, color, size = 15) {
+      this.floaters.push({ text, x: clamp(x, 60, W - 60), y, color, size, life: 1 });
+      if (this.floaters.length > 8) this.floaters.shift();
+    }
+
+    _handleCollision(b, removals) {
+      if (this.cheats.has('ghost')) { this.assisted = true; return; }
+      if (this.cheats.has('nodeath')) {
+        this.assisted = true;
+        removals.add(b);
+        this.ps.emit(this.player.x, PLAYER_TOP, { count: 14, life: 0.5, size: 4, color: COLORS.danger, speed: 170 });
+        return;
+      }
+      if (this.invulnT > 0) return;
+      if (this.lives > 1) {
+        this.lives -= 1;
+        this.combo = 0;
+        this.lastTier = 1;
+        this.invulnT = 1.1;
+        this.player.shieldFlash = 0.7;
+        this.hitFlash = 0.4;
+        this.shake = reduceMotion() ? 0 : 0.5;
+        removals.add(b);
+        // Clear the immediate wave so the shield break is survivable.
+        for (const other of this.blocks) {
+          if (other !== b && other.y + other.h > PLAYER_TOP - 150 && other.y < PLAYER_BOT + 90) removals.add(other);
+        }
+        this.ps.emit(this.player.x, PLAYER_Y, { count: 22, life: 0.55, size: 5, color: '#ffffff', speed: 240 });
+        this.hooks.onToast?.('Shield down!', 'tone-danger');
+        Sound.play('shield');
+        return;
+      }
+      this._endRun();
+    }
+
+    _updateBlocks(dt) {
+      const removals = new Set();
+      const scale = this.dyScale();
+      for (const b of this.blocks) {
+        b.y += b.vy * scale * dt;
+        if (removals.has(b)) continue;
+        if (this._hitsPlayer(b)) {
+          this._handleCollision(b, removals);
+          if (this.state === 'over') return;
+          continue;
+        }
+        if (!b.grazed && this._grazes(b)) {
+          b.grazed = true;
+          this._rewardGraze(b);
+        }
+        if (b.y > H + 4) {
+          removals.add(b);
+          this._rewardDodge(b);
+        }
+      }
+      if (removals.size) this.blocks = this.blocks.filter(b => !removals.has(b));
+    }
+
+    _updatePickups(dt) {
+      const alive = [];
+      const scale = this.dyScale();
+      for (const p of this.pickups) {
+        p.y += p.vy * scale * dt;
+        p.glow += dt * 3;
+        if (this.powerups.has('Magnet Pulse') && p.y > H * 0.35) p.x += (this.player.x - p.x) * Math.min(1, dt * 3);
+        if (this._hitsPlayer(p)) {
+          this.storyPickups += 1;
+          this.combo += 2;
+          this.bestComboRun = Math.max(this.bestComboRun, this.combo);
+          this.data.totalPickups += 1;
+          if (!this.assisted && !this.hasCheats && !runTainted) this.runCoins += this.powerups.has('Lucky Drift') ? 3 : 2;
+          this.ps.emit(p.x, p.y, { count: 12, life: 0.5, size: 4, color: COLORS.pickup, speed: 170 });
+          this._floater('+SHARD', p.x, p.y - 14, COLORS.pickup, 13);
+          Sound.play('pickup');
+          this._checkTier();
+          continue;
+        }
+        if (p.y <= H + 30) alive.push(p);
+      }
+      this.pickups = alive;
+    }
+
+    _endRun() {
+      if (this.state === 'over') return;
+      this.state = 'over';
+      this.hitFlash = 0.5;
+      this.shake = reduceMotion() ? 0 : 0.8;
+      this.ps.emit(this.player.x, PLAYER_Y, { count: 34, life: 0.7, size: 5.5, color: COLORS.danger, speed: 260, gravity: 160 });
+      Sound.play('death');
+      this.hooks.onState?.(this.state);
+      this.hooks.onRunEnd?.({
+        score: this.score, runCoins: this.runCoins, pickups: this.storyPickups,
+        combo: this.bestComboRun, grazes: this.grazes,
+        duration: this.elapsed, assisted: this.assisted || this.hasCheats || runTainted,
+      });
+    }
+
+    step(dt) {
+      if (this.hasCheats) { this.assisted = true; runTainted = true; }
+      this.elapsed += dt;
+      this.spawnTimer += dt;
+      if (this.spawnTimer >= this._interval()) {
+        this.spawnTimer = 0;
+        this._spawnWave();
+      }
+      if (this.bloomT > 0) this.bloomT -= dt;
+      if (this.invulnT > 0) this.invulnT -= dt;
+      this._updatePlayer(dt);
+      this._updateBlocks(dt);
+      if (this.state === 'running') this._updatePickups(dt);
+    }
+
+    // Synchronous simulation used by tests/benchmarks; skips rendering.
+    // Simulated runs always count as assisted so debug fast-forwards can
+    // never farm coins, bests, missions, or campaign progress.
+    simulate(seconds, stepSize = 1 / 90) {
+      runTainted = true;
+      this.assisted = true;
+      const steps = Math.floor(seconds / stepSize);
+      for (let i = 0; i < steps; i++) {
+        if (this.state !== 'running') break;
+        this.step(stepSize);
+        this.ps.update(stepSize);
+      }
+      return { state: this.state, score: this.score, elapsed: this.elapsed };
+    }
+
+    _loop(ts) {
+      const dt = clamp((ts - this.lastTs) / 1000, 0, 0.05);
+      this.lastTs = ts;
+      this.time += dt;
+      const running = this.state === 'running';
+      if (running) this.step(dt);
+      if (this.state !== 'paused') {
+        this.ps.update(dt);
+        this._updateStars(dt, running ? this._speed() : 45);
+        this.floaters = this.floaters.filter(f => (f.life -= dt / 0.9) > 0);
+        if (this.hitFlash > 0) this.hitFlash -= dt;
+        if (this.shake > 0) this.shake -= dt * 1.6;
+      }
+      this.draw();
+      this.hooks.onFrame?.();
+      this.rafId = rAF(this._loop);
+    }
+
+    _updateStars(dt, speed) {
+      const drift = 14 + speed * 0.16;
+      for (const s of this.stars) {
+        s.y += drift * s.z * dt;
+        if (s.y > H + 2) { s.y = -2; s.x = rng() * W; }
+      }
+    }
+
+    // ── Rendering ────────────────────────────────────────────────────────────
+    draw() {
+      const ctx = this.ctx;
+      ctx.save();
+      if (this.shake > 0) {
+        const m = this.shake * 7;
+        ctx.translate((rng() - 0.5) * m, (rng() - 0.5) * m);
+      }
+
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, COLORS.track);
+      bgGrad.addColorStop(1, shiftHex(COLORS.track, -4));
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(-8, -8, W + 16, H + 16);
+
+      // Starfield
+      ctx.fillStyle = COLORS.accent;
+      for (const s of this.stars) {
+        ctx.globalAlpha = 0.1 + s.z * 0.26;
+        ctx.fillRect(s.x, s.y, s.r, s.r + s.z * 3);
+      }
+      ctx.globalAlpha = 1;
+
+      // Lane dividers
+      ctx.strokeStyle = COLORS.accent + '22';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 13]);
+      for (let l = 1; l < LANES; l++) {
+        ctx.beginPath(); ctx.moveTo(l * LANE_W, 0); ctx.lineTo(l * LANE_W, H); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      // Player baseline
+      ctx.strokeStyle = COLORS.accent + '30';
+      ctx.beginPath(); ctx.moveTo(0, PLAYER_BOT + 14); ctx.lineTo(W, PLAYER_BOT + 14); ctx.stroke();
+
+      this.ps.draw(ctx);
+
+      for (const p of this.pickups) this._drawPickup(ctx, p);
+      for (const b of this.blocks) this._drawHazard(ctx, b);
+      if (this.state !== 'over') this._drawPlayer(ctx);
+
+      // Floating text
+      for (const f of this.floaters) {
+        ctx.globalAlpha = Math.min(1, f.life * 1.6);
+        ctx.fillStyle = f.color;
+        ctx.font = `800 ${f.size}px Inter, system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(f.text, f.x, f.y - (1 - f.life) * 34);
+      }
+      ctx.textAlign = 'start';
+      ctx.globalAlpha = 1;
+
+      // Time Bloom tint
+      if (this.bloomT > 0) {
+        ctx.fillStyle = `rgba(120, 200, 255, ${Math.min(0.08, this.bloomT * 0.05)})`;
+        ctx.fillRect(-8, -8, W + 16, H + 16);
+      }
+
+      if (this.hitFlash > 0 && !reduceMotion()) {
+        ctx.fillStyle = `rgba(255, 60, 90, ${this.hitFlash * 0.3})`;
+        ctx.fillRect(-8, -8, W + 16, H + 16);
+      }
+
+      // Vignette
+      const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 0.95);
+      vg.addColorStop(0, 'rgba(0,0,0,0)');
+      vg.addColorStop(1, 'rgba(0,0,0,0.32)');
+      ctx.fillStyle = vg;
+      ctx.fillRect(-8, -8, W + 16, H + 16);
+
+      ctx.restore();
+    }
+
+    _drawPickup(ctx, p) {
+      const pulse = Math.sin(p.glow) * 0.4 + 0.6;
+      ctx.globalAlpha = 0.22 * pulse;
+      ctx.fillStyle = COLORS.pickup;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = COLORS.pickup;
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.glow * 0.5);
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3 - Math.PI / 6;
+        ctx.lineTo(Math.cos(a) * p.size, Math.sin(a) * p.size);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+
+    _drawHazard(ctx, b) {
+      const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+      g.addColorStop(0, COLORS.dangerSoft);
+      g.addColorStop(1, COLORS.danger);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.roundRect(b.x, b.y, b.w, b.h, 8);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // Chevron hazard stripes
+      ctx.save();
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      const offset = (b.seed * 18) | 0;
+      for (let sx = b.x - b.h + offset; sx < b.x + b.w + b.h; sx += 20) {
+        ctx.moveTo(sx, b.y + b.h + 3);
+        ctx.lineTo(sx + b.h, b.y - 3);
+      }
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillRect(b.x + 3, b.y + 2, b.w - 6, 2.5);
+    }
+
+    _drawPlayer(ctx) {
+      const cx = this.player.x, cy = PLAYER_Y;
+      const w2 = PLAYER_W / 2, h2 = PLAYER_H / 2;
+      const blink = this.invulnT > 0 && Math.sin(this.time * 26) > 0;
+      if (blink) ctx.globalAlpha = 0.4;
+      // Shield ring
+      if (this.lives > 1 || this.player.shieldFlash > 0) {
+        const a = this.lives > 1 ? 0.35 : Math.min(1, this.player.shieldFlash * 1.6);
+        ctx.strokeStyle = `rgba(255,255,255,${a})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, w2 + 9, 0, Math.PI * 2); ctx.stroke();
+      }
+      // Engine flame
+      const flick = 4 + Math.sin(this.time * 30) * 2.4;
+      ctx.fillStyle = COLORS.prism ? prismColor(this.time) : COLORS.fx;
+      ctx.globalAlpha *= 0.75;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, cy + h2 - 2);
+      ctx.lineTo(cx, cy + h2 + flick + 6);
+      ctx.lineTo(cx + 6, cy + h2 - 2);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = blink ? 0.4 : 1;
+      // Hull
+      ctx.fillStyle = COLORS.accent;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - h2);
+      ctx.lineTo(cx + w2 * 0.85, cy);
+      ctx.lineTo(cx + w2 * 0.55, cy + h2);
+      ctx.lineTo(cx - w2 * 0.55, cy + h2);
+      ctx.lineTo(cx - w2 * 0.85, cy);
+      ctx.closePath(); ctx.fill();
+      // Cockpit + wing lines
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.beginPath(); ctx.ellipse(cx, cy - h2 * 0.25, 7.5, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - w2 * 0.55, cy + h2); ctx.lineTo(cx - w2 * 0.85, cy);
+      ctx.moveTo(cx + w2 * 0.55, cy + h2); ctx.lineTo(cx + w2 * 0.85, cy);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ─── DAILY OBJECTIVE ────────────────────────────────────────────────────────
+  function dailyObjForDay(day) {
+    let h = 0x811c9dc5;
+    for (const c of day) { h ^= c.charCodeAt(0); h = (h * 0x01000193) >>> 0; }
+    return DAILY_OBJ[h % DAILY_OBJ.length];
+  }
+
+  // ─── UI CONTROLLER ──────────────────────────────────────────────────────────
+  class DodgeUI {
+    constructor() {
+      this.data = load();
+      this.activeTab = 'modes';
+      this.previews = { modifier: null, powerup: null, theme: null };
+      this._statusTimer = null;
+      this._toastTimer = null;
+      this._hud = {};
+      Sound.muted = this.data.soundMuted === true;
+      // Re-seal immediately so legacy saves migrate to the current anticheat
+      // format (and gain their ledger entry) before any run is played.
+      save(this.data);
+      this._ensureDailyObjective();
+
+      this.engine = new DodgeEngine(qs('#gameCanvas'), this.data, {
+        onState: state => this._onEngineState(state),
+        onRunEnd: summary => this._onRunEnd(summary),
+        onToast: (msg, tone) => this.toast(msg, tone),
+        onFrame: () => this._syncHud(),
+      });
+
+      this._bindButtons();
+      this._bindKeyboard();
+      this._bindTouch();
+      this._bindCheats();
+      this._renderTab('modes');
+      this._renderMission();
+      this._syncHeader();
+      this._syncCheats();
+      this._syncSoundIcon();
+      this._showOverlay('idle');
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && this.engine.state === 'running') {
+          this.engine.pause();
+          this.flash('Auto-paused in the background.', 'warn');
+        }
+      });
+      window.addEventListener('pagehide', () => save(this.data));
+    }
+
+    // ── Daily objective ──────────────────────────────────────────────────────
+    _ensureDailyObjective() {
+      const today = localDay();
+      const obj = dailyObjForDay(today);
+      const stored = this.data.dailyObjective;
+      if (!stored || stored.date !== today || stored.objectiveId !== obj.id) {
+        this.data.dailyObjective = { date: today, objectiveId: obj.id, completed: false, rewardClaimed: false };
+        save(this.data);
+      }
+    }
+
+    get dailyState() {
+      this._ensureDailyObjective();
+      return { ...this.data.dailyObjective, meta: dailyObjForDay(localDay()) };
+    }
+
+    claimDaily() {
+      const ds = this.dailyState;
+      if (!ds.completed) { this.flash('Finish the objective first.', 'warn'); Sound.play('error'); return; }
+      if (ds.rewardClaimed) { this.flash('Already claimed today.', 'warn'); return; }
+      const d = this.data;
+      d.coins += ds.meta.reward;
+      const prevDate = d.lastDailyClaimDate || '';
+      const consecutive = prevDate && (new Date(ds.date).getTime() - new Date(prevDate).getTime()) === 86400000;
+      d.dailyStreak = consecutive ? (d.dailyStreak || 0) + 1 : 1;
+      d.lastDailyClaimDate = ds.date;
+      const bonus = d.dailyStreak > 1 ? Math.min(80, d.dailyStreak * 10) : 0;
+      if (bonus > 0) d.coins += bonus;
+      if (d.dailyStreak % 3 === 0) d.aiPurchasedTokens = (d.aiPurchasedTokens || 0) + 1;
+      d.dailyObjective = { ...d.dailyObjective, rewardClaimed: true };
+      save(d);
+      Sound.play('buy');
+      this._renderMission();
+      this._syncHeader();
+      this.flash(`Reward claimed — streak ${d.dailyStreak}${bonus ? `, +${bonus} bonus coins` : ''}.`, 'ok');
+    }
+
+    // ── Run lifecycle ────────────────────────────────────────────────────────
+    startRun() {
+      this._hideOverlay();
+      this.engine.startRun();
+      this.flash(`${this.data.selectedMode} run started.`, 'ok');
+    }
+
+    _onEngineState(state) {
+      const primary = qs('#primaryBtn');
+      const restart = qs('#restartBtn');
+      restart.disabled = state === 'idle';
+      if (state === 'idle') { primary.textContent = 'Launch run'; this._showOverlay('idle'); }
+      if (state === 'running') { primary.textContent = 'Pause'; this._hideOverlay(); this._setStatus(); }
+      if (state === 'paused') { primary.textContent = 'Resume'; this._showOverlay('paused'); this._setStatus(); }
+      if (state === 'over') { primary.textContent = 'Play again'; }
+      this._syncStoryChip();
+    }
+
+    // Generous physical ceilings on what one legitimate run can produce.
+    // Real play tops out well under half of each bound (see wave interval
+    // floor and per-wave reward caps); only forged summaries exceed them.
+    _plausibleRun(s) {
+      const dur = Math.max(0, Number(s.duration) || 0);
+      const score = Math.max(0, Number(s.score) || 0);
+      const coins = Math.max(0, Number(s.runCoins) || 0);
+      const pickups = Math.max(0, Number(s.pickups) || 0);
+      const grazes = Math.max(0, Number(s.grazes) || 0);
+      const combo = Math.max(0, Number(s.combo) || 0);
+      if (score > 0 && dur < 0.5) return false;
+      if (score > 60 * dur + 80) return false;
+      if (coins > 4 * score + 12 * dur + 80) return false;
+      if (pickups > 2 * dur + 8) return false;
+      if (grazes > 10 * dur + 20) return false;
+      if (combo > score + 2 * (grazes + pickups) + 20) return false;
+      return true;
+    }
+
+    _onRunEnd(summary) {
+      const d = this.data;
+      if (!summary.assisted && !this._plausibleRun(summary)) {
+        summary.assisted = true;
+        console.warn('Xyrex Dodge anticheat: implausible run stats — run not recorded.');
+        this.toast('Anticheat: run stats rejected', 'tone-danger');
+      }
+      d.totalRuns += 1;
+      let newBest = false;
+      if (!summary.assisted) {
+        newBest = summary.score > (d.bestScore || 0);
+        d.bestScore = Math.max(d.bestScore || 0, summary.score);
+        d.bestByMode = d.bestByMode || {};
+        d.bestByMode[d.selectedMode] = Math.max(d.bestByMode[d.selectedMode] || 0, summary.score);
+        d.longestCombo = Math.max(d.longestCombo || 0, summary.combo);
+        d.totalGrazes = (d.totalGrazes || 0) + summary.grazes;
+        d.coins += summary.runCoins;
+        if (d.selectedMode === 'Story') this._checkStory(summary);
+        this._evaluateDaily(summary);
+      }
+      save(d);
+      this._syncHeader();
+      this._renderMission();
+      if (this.activeTab === 'progress' || this.activeTab === 'modes') this._renderTab(this.activeTab);
+      this._showOverlay('over', { summary, newBest });
+      this._setStatus();
+    }
+
+    _checkStory(summary) {
+      const d = this.data;
+      const idx = clamp(d.storyProgress || 0, 0, STORY_CHAPTERS.length - 1);
+      const ch = STORY_CHAPTERS[idx];
+      if (!ch || d.storyRewardsClaimed.includes(ch.id)) return;
+      const e = this.engine;
+      const ok = summary.score >= (ch.targetScore || 0) &&
+        (!ch.targetPickups || summary.pickups >= ch.targetPickups) &&
+        (!ch.targetCombo || summary.combo >= ch.targetCombo) &&
+        (!ch.requireLife || e.lives >= 1);
+      if (ok) {
+        d.coins += ch.reward;
+        d.storyRewardsClaimed.push(ch.id);
+        d.storyProgress = Math.min(STORY_CHAPTERS.length, (d.storyProgress || 0) + 1);
+        this.flash(`Sector cleared: ${ch.title} · +${ch.reward} coins.`, 'ok');
+        this.toast(`Sector cleared · +${ch.reward} coins`, 'tone-success');
+        Sound.play('buy');
+      }
+    }
+
+    _evaluateDaily(summary) {
+      const ds = this.dailyState;
+      if (ds.completed) return;
+      const { type, target = 0 } = ds.meta;
+      const hasOwnedPu = this.data.selectedPowerup !== 'None' && this.data.ownedPowerups.includes(this.data.selectedPowerup);
+      const done = (type === 'run') ||
+        (type === 'pickups' && summary.pickups >= target) ||
+        (type === 'coins' && summary.runCoins >= target) ||
+        (type === 'grazes' && summary.grazes >= target) ||
+        (type === 'powerupScore' && hasOwnedPu && summary.score >= target);
+      if (done) {
+        this.data.dailyObjective = { ...this.data.dailyObjective, completed: true };
+        save(this.data);
+        this.toast(`Daily objective complete: ${ds.meta.title}`, 'tone-success');
+      }
+    }
+
+    // ── Overlays / status / toast ────────────────────────────────────────────
+    _showOverlay(kind, extra = {}) {
+      const overlay = qs('#overlay');
+      const mode = this.data.selectedMode;
+      const m = GAME_MODES[mode];
+      if (kind === 'idle') {
+        overlay.innerHTML = `
+          <div class="ov-card">
+            <div class="ov-kicker">Xyrex Arcade</div>
+            <h2>Xyrex Dodge</h2>
+            <p><strong>${escapeHtml(mode)}</strong> — ${escapeHtml(m.obj)}</p>
+            <div class="ov-keys">
+              <span class="ov-key"><b>◀ ▶</b> move</span>
+              <span class="ov-key"><b>Space</b> launch / pause</span>
+              <span class="ov-key"><b>F</b> fullscreen</span>
+            </div>
+            <div class="ov-actions">
+              <button class="btn btn-primary" data-ov="start" type="button">Launch run</button>
+            </div>
+          </div>`;
+      } else if (kind === 'paused') {
+        overlay.innerHTML = `
+          <div class="ov-card">
+            <div class="ov-kicker">On hold</div>
+            <h2>Paused</h2>
+            <p>The wave grid is frozen. Take a breath.</p>
+            <div class="ov-actions">
+              <button class="btn btn-primary" data-ov="resume" type="button">Resume</button>
+              <button class="btn btn-danger" data-ov="restart" type="button">Restart</button>
+            </div>
+          </div>`;
+      } else if (kind === 'over') {
+        const s = extra.summary || {};
+        const pill = extra.newBest
+          ? '<span class="ov-pill">★ New best score</span>'
+          : s.assisted ? '<span class="ov-pill pill-muted">Utilities active — run not recorded</span>' : '';
+        overlay.innerHTML = `
+          <div class="ov-card">
+            <div class="ov-kicker">${escapeHtml(mode)} run</div>
+            <h2>Run over</h2>
+            ${pill}
+            <div class="ov-stats">
+              <div class="ov-stat"><div class="ov-stat-val" style="color:var(--periwinkle-2)">${fmt(s.score)}</div><div class="ov-stat-lbl">Score</div></div>
+              <div class="ov-stat"><div class="ov-stat-val" style="color:#ffdf9e">${fmt(s.assisted ? 0 : s.runCoins)}</div><div class="ov-stat-lbl">Coins</div></div>
+              <div class="ov-stat"><div class="ov-stat-val" style="color:#a9f6d3">${fmt(s.pickups)}</div><div class="ov-stat-lbl">Shards</div></div>
+              <div class="ov-stat"><div class="ov-stat-val">${fmt(s.combo)}</div><div class="ov-stat-lbl">Best combo</div></div>
+              <div class="ov-stat"><div class="ov-stat-val">${fmt(s.grazes)}</div><div class="ov-stat-lbl">Grazes</div></div>
+              <div class="ov-stat"><div class="ov-stat-val">${Math.round(s.duration || 0)}s</div><div class="ov-stat-lbl">Survived</div></div>
+            </div>
+            <div class="ov-actions">
+              <button class="btn btn-primary" data-ov="start" type="button">Play again</button>
+            </div>
+          </div>`;
+      }
+      overlay.hidden = false;
+      overlay.querySelector('[data-ov="start"]')?.addEventListener('click', () => this.startRun());
+      overlay.querySelector('[data-ov="resume"]')?.addEventListener('click', () => this.engine.resume());
+      overlay.querySelector('[data-ov="restart"]')?.addEventListener('click', () => this.startRun());
+      // Tapping the backdrop (common on touch) acts like the primary button.
+      overlay.addEventListener('click', e => {
+        if (e.target !== overlay) return;
+        if (kind === 'paused') this.engine.resume();
+        else this.startRun();
+      });
+    }
+
+    _hideOverlay() { qs('#overlay').hidden = true; }
+
+    flash(msg, tone = 'ok') {
+      const el = qs('#statusBar');
+      el.textContent = msg;
+      el.className = 'status-bar ' + (tone === 'ok' ? 'ok' : tone === 'warn' ? 'warn' : 'danger');
+      clearTimeout(this._statusTimer);
+      this._statusTimer = setTimeout(() => this._setStatus(), 2400);
+    }
+
+    _setStatus() {
+      const el = qs('#statusBar');
+      const state = this.engine.state;
+      el.className = 'status-bar' + (state === 'running' ? ' ok' : '');
+      if (state === 'idle') el.textContent = 'Pick a mode, then press Space or Launch run.';
+      else if (state === 'running') el.textContent = this.engine.cheats.has('autoplay') ? 'Auto Pilot is flying this run.' : `${this.data.selectedMode} run in progress.`;
+      else if (state === 'paused') el.textContent = 'Paused — press Space to resume.';
+      else el.textContent = 'Run over — press Space to fly again.';
+    }
+
+    toast(msg, tone = '') {
+      const el = qs('#gameToast');
+      el.textContent = msg;
+      el.className = `game-toast show ${tone}`;
+      clearTimeout(this._toastTimer);
+      this._toastTimer = setTimeout(() => el.classList.remove('show'), 1900);
+    }
+
+    // ── HUD sync (runs every frame, writes only on change) ──────────────────
+    _hudSet(id, value) {
+      if (this._hud[id] === value) return;
+      this._hud[id] = value;
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    }
+
+    _syncHud() {
+      const e = this.engine;
+      const mult = e.tier();
+      this._hudSet('badgeScore', `Score ${fmt(e.score)}`);
+      this._hudSet('badgeCoins', `Coins ${fmt(e.runCoins)}`);
+      this._hudSet('badgeCombo', mult > 1 ? `Combo ${fmt(e.combo)} ×${mult}` : `Combo ${fmt(e.combo)}`);
+      this._hudSet('badgeLives', `Lives ${e.lives}`);
+      this._hudSet('badgeStage', e.stage().name);
+    }
+
+    _syncHeader() {
+      const d = this.data;
+      this._hudSet('hdrCoins', fmt(d.coins));
+      this._hudSet('hdrBest', fmt(d.bestScore));
+      this._hudSet('hdrRuns', fmt(d.totalRuns));
+      this._hudSet('hdrStreak', fmt(d.dailyStreak));
+    }
+
+    _syncStoryChip() {
+      const chip = qs('#storyChip');
+      const active = this.data.selectedMode === 'Story' && this.engine.state !== 'idle';
+      const idx = clamp(this.data.storyProgress || 0, 0, STORY_CHAPTERS.length - 1);
+      const ch = STORY_CHAPTERS[idx];
+      const done = this.data.storyProgress >= STORY_CHAPTERS.length;
+      chip.hidden = !active || !ch;
+      if (!chip.hidden) {
+        qs('#storyChipTitle').textContent = done ? 'Campaign complete' : ch.title;
+        qs('#storyChipGoal').textContent = done ? 'All sectors cleared — free flight.' : ch.label;
+      }
+    }
+
+    _syncSoundIcon() {
+      // Inline display instead of [hidden]: the hidden property is not
+      // reliable on SVG elements.
+      qs('#soundOnIcon').style.display = Sound.muted ? 'none' : '';
+      qs('#soundOffIcon').style.display = Sound.muted ? '' : 'none';
+      qs('#soundBtn').setAttribute('aria-label', Sound.muted ? 'Unmute sound' : 'Mute sound');
+    }
+
+    _syncCheats() {
+      document.querySelectorAll('[data-cheat]').forEach(inp => {
+        inp.checked = (this.data.activeCheats || []).includes(inp.dataset.cheat);
+      });
+    }
+
+    // ── Tabs ─────────────────────────────────────────────────────────────────
+    _renderTab(tab) {
+      this.activeTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.classList.toggle('is-active', active);
+        b.setAttribute('aria-selected', String(active));
+      });
+      document.querySelectorAll('.tab-panel').forEach(c => { c.hidden = c.id !== `tab-${tab}`; });
+      const el = qs(`#tab-${tab}`);
+      if (!el) return;
+      if (tab === 'modes') el.innerHTML = this._buildModes();
+      if (tab === 'loadout') el.innerHTML = this._buildLoadout();
+      if (tab === 'shop') el.innerHTML = this._buildShop();
+      if (tab === 'progress') el.innerHTML = this._buildProgress();
+      this._bindTabEvents(tab);
+    }
+
+    _buildModes() {
+      const bm = this.data.bestByMode || {};
+      const cards = Object.entries(GAME_MODES).map(([name, m]) => `
+        <button class="mode-card ${this.data.selectedMode === name ? 'is-selected' : ''}" data-mode="${name}" type="button">
+          <div class="mode-name">${name} ${this.data.selectedMode === name ? '<span class="chip chip-accent">Selected</span>' : ''}</div>
+          <div class="mode-desc">${m.desc}</div>
+          <div><span class="chip">Best ${fmt(bm[name] || 0)}</span></div>
+        </button>`).join('');
+      return `<div class="mode-grid">${cards}</div>`;
+    }
+
+    _itemRow({ type, name, desc, icon, price, owned, selected, swatch }) {
+      const priceChip = price > 0
+        ? owned ? '<span class="chip chip-success">Owned</span>' : `<span class="chip chip-gold">${fmt(price)} coins</span>`
+        : '';
+      return `
+        <button class="item-row ${selected ? 'is-selected' : ''} ${!owned ? 'is-locked' : ''}" data-loadout="${type}" data-name="${escapeHtml(name)}" type="button">
+          ${icon != null ? `<div class="item-icon">${icon}</div>` : ''}
+          <div class="item-body">
+            <div class="item-name">${swatch ? `<span class="theme-swatch" style="background:${swatch}"></span>` : ''}${escapeHtml(name)} ${priceChip}</div>
+            <div class="item-desc">${escapeHtml(desc)}</div>
+          </div>
+        </button>`;
+    }
+
+    _buildLoadout() {
+      const d = this.data;
+      const previewMod = this.previews.modifier;
+      const previewPu = this.previews.powerup;
+      const previewTh = this.previews.theme;
+
+      const mods = Object.entries(MODIFIERS).map(([n, m]) => this._itemRow({
+        type: 'modifier', name: n, desc: m.desc, price: m.price,
+        owned: d.ownedModifiers.includes(n),
+        selected: previewMod ? previewMod === n : d.selectedModifier === n,
+        icon: (previewMod ? previewMod === n : d.selectedModifier === n) ? '◉' : '○',
+      })).join('');
+      const pus = Object.entries(POWERUPS).map(([n, p]) => this._itemRow({
+        type: 'powerup', name: n, desc: p.desc, price: p.price, icon: p.icon,
+        owned: n === 'None' || d.ownedPowerups.includes(n),
+        selected: previewPu ? previewPu === n : d.selectedPowerup === n,
+      })).join('');
+      const themes = Object.entries(VISUAL_THEMES).map(([n, t]) => this._itemRow({
+        type: 'theme', name: n, desc: t.desc, price: t.price, swatch: t.accent,
+        owned: d.ownedVisualThemes.includes(n),
+        selected: previewTh ? previewTh === n : d.selectedVisualTheme === n,
+      })).join('');
+
+      const buyButton = (type, catalog, selectedName, ownedList) => {
+        const item = catalog[selectedName];
+        if (!item || !selectedName) return '';
+        const owned = type === 'powerup' ? (selectedName === 'None' || ownedList.includes(selectedName)) : ownedList.includes(selectedName);
+        if (owned) return '';
+        return `<div class="buy-bar"><button class="btn btn-primary" data-buy="${type}" type="button">Unlock ${escapeHtml(selectedName)} — ${fmt(item.price)} coins</button></div>`;
+      };
+
+      return `
+        <div class="group">
+          <h3 class="group-title">Modifier — how your ship handles</h3>
+          <div class="item-list">${mods}</div>
+          ${buyButton('modifier', MODIFIERS, previewMod, d.ownedModifiers)}
+        </div>
+        <div class="group">
+          <h3 class="group-title">Powerup — one equipped per run</h3>
+          <div class="item-list">${pus}</div>
+          ${buyButton('powerup', POWERUPS, previewPu, d.ownedPowerups)}
+        </div>
+        <div class="group">
+          <h3 class="group-title">Visual theme</h3>
+          <div class="item-list">${themes}</div>
+          ${buyButton('theme', VISUAL_THEMES, previewTh, d.ownedVisualThemes)}
+        </div>`;
+    }
+
+    _buildShop() {
+      const d = this.data;
+      const rows = Object.entries(UTILITY_SKINS).map(([n, s]) => this._itemRow({
+        type: 'skin', name: n, desc: s.desc, price: s.price,
+        owned: (d.ownedUtilitySkins || []).includes(n),
+        selected: d.utilitySkin === n,
+        swatch: s.fx === 'prism' ? 'linear-gradient(90deg,#ff5e5e,#f0c36f,#5dd39e,#8f9cff)' : (s.fx || COLORS.accent),
+      })).join('');
+      return `
+        <div class="group">
+          <h3 class="group-title">Effect skins — trail, dodge and warp effects</h3>
+          <div class="item-list">${rows}</div>
+          <p class="item-desc" style="margin-top:10px">Effect skins are cosmetic only. Locked skins unlock instantly when you tap them with enough coins.</p>
+        </div>`;
+    }
+
+    _buildProgress() {
+      const d = this.data;
+      const prog = d.storyProgress || 0;
+      const story = STORY_CHAPTERS.map((ch, i) => {
+        const locked = i > prog;
+        const done = d.storyRewardsClaimed.includes(ch.id);
+        return `<div class="story-card ${locked ? 'is-locked' : ''} ${done ? 'is-done' : ''}">
+          <div class="story-card-title">${ch.title}</div>
+          <div class="story-card-desc">${ch.brief} — ${ch.label}.</div>
+          <div class="story-card-footer">
+            <span class="chip ${done ? 'chip-success' : locked ? '' : 'chip-accent'}">${done ? '✓ Cleared' : locked ? 'Locked' : 'Available'}</span>
+            <span class="chip chip-gold">+${ch.reward} coins</span>
+          </div>
+        </div>`;
+      }).join('');
+      const bm = d.bestByMode || {};
+      const modeRows = Object.keys(GAME_MODES).map(m => `
+        <div class="stat-row"><span class="stat-row-lbl">${m}</span><span class="stat-row-val">${fmt(bm[m] || 0)}</span></div>`).join('');
+      return `
+        <div class="group">
+          <h3 class="group-title">Campaign — play in Story mode</h3>
+          <div class="story-cards">${story}</div>
+        </div>
+        <div class="group">
+          <h3 class="group-title">Best score by mode</h3>
+          ${modeRows}
+        </div>
+        <div class="group">
+          <h3 class="group-title">Lifetime stats</h3>
+          <div class="stat-row"><span class="stat-row-lbl">Total runs</span><span class="stat-row-val">${fmt(d.totalRuns)}</span></div>
+          <div class="stat-row"><span class="stat-row-lbl">Longest combo</span><span class="stat-row-val">${fmt(d.longestCombo)}</span></div>
+          <div class="stat-row"><span class="stat-row-lbl">Shards collected</span><span class="stat-row-val">${fmt(d.totalPickups)}</span></div>
+          <div class="stat-row"><span class="stat-row-lbl">Hazards grazed</span><span class="stat-row-val">${fmt(d.totalGrazes)}</span></div>
+        </div>`;
+    }
+
+    _bindTabEvents(tab) {
+      if (tab === 'modes') {
+        document.querySelectorAll('[data-mode]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (this.data.selectedMode === btn.dataset.mode) return;
+            this.data.selectedMode = btn.dataset.mode;
+            save(this.data);
+            Sound.play('click');
+            this.engine.toIdle();
+            this._renderTab('modes');
+            this.flash(`${this.data.selectedMode} mode selected.`, 'ok');
+          });
+        });
+      }
+      if (tab === 'loadout') {
+        document.querySelectorAll('[data-loadout]').forEach(btn => {
+          btn.addEventListener('click', () => this._onLoadoutClick(btn.dataset.loadout, btn.dataset.name));
+        });
+        document.querySelectorAll('[data-buy]').forEach(btn => {
+          btn.addEventListener('click', () => this._buyPreviewed(btn.dataset.buy));
+        });
+      }
+      if (tab === 'shop') {
+        document.querySelectorAll('[data-loadout="skin"]').forEach(btn => {
+          btn.addEventListener('click', () => this._onSkinClick(btn.dataset.name));
+        });
+      }
+    }
+
+    _onLoadoutClick(type, name) {
+      const d = this.data;
+      const catalogs = { modifier: MODIFIERS, powerup: POWERUPS, theme: VISUAL_THEMES };
+      const catalog = catalogs[type];
+      if (!catalog?.[name]) return;
+      const owned = type === 'powerup'
+        ? (name === 'None' || d.ownedPowerups.includes(name))
+        : type === 'modifier' ? d.ownedModifiers.includes(name) : d.ownedVisualThemes.includes(name);
+      if (owned) {
+        if (type === 'modifier') d.selectedModifier = name;
+        if (type === 'powerup') d.selectedPowerup = name;
+        if (type === 'theme') d.selectedVisualTheme = name;
+        this.previews[type] = null;
+        save(d);
+        this.engine.refreshLoadout();
+        Sound.play('click');
+        this._renderTab('loadout');
+        if (this.engine.state === 'running' || this.engine.state === 'paused') {
+          this.flash(`${name} equipped — handling changes apply next run.`, 'ok');
+        } else {
+          this.flash(`${name} equipped.`, 'ok');
+        }
+      } else {
+        this.previews[type] = name;
+        this._renderTab('loadout');
+      }
+    }
+
+    _buyPreviewed(type) {
+      const d = this.data;
+      const name = this.previews[type];
+      const catalogs = { modifier: MODIFIERS, powerup: POWERUPS, theme: VISUAL_THEMES };
+      const item = catalogs[type]?.[name];
+      if (!item) return;
+      if (d.coins < item.price) {
+        this.flash(`Not enough coins — ${fmt(item.price - d.coins)} more needed.`, 'warn');
+        Sound.play('error');
+        return;
+      }
+      d.coins -= item.price;
+      if (type === 'modifier') { d.ownedModifiers.push(name); d.selectedModifier = name; }
+      if (type === 'powerup') { d.ownedPowerups.push(name); d.selectedPowerup = name; }
+      if (type === 'theme') { d.ownedVisualThemes.push(name); d.selectedVisualTheme = name; }
+      this.previews[type] = null;
+      save(d);
+      this.engine.refreshLoadout();
+      Sound.play('buy');
+      this._renderTab('loadout');
+      this._syncHeader();
+      this.flash(`${name} unlocked and equipped.`, 'ok');
+    }
+
+    _onSkinClick(name) {
+      const d = this.data;
+      const s = UTILITY_SKINS[name];
+      if (!s) return;
+      if (!(d.ownedUtilitySkins || []).includes(name)) {
+        if (d.coins < s.price) {
+          this.flash(`Not enough coins — ${fmt(s.price - d.coins)} more needed.`, 'warn');
+          Sound.play('error');
+          return;
+        }
+        d.coins -= s.price;
+        d.ownedUtilitySkins.push(name);
+        Sound.play('buy');
+      } else {
+        Sound.play('click');
+      }
+      d.utilitySkin = name;
+      save(d);
+      this.engine.refreshLoadout();
+      this._renderTab('shop');
+      this._syncHeader();
+      this.flash(`${name} effects equipped.`, 'ok');
+    }
+
+    // ── Mission panel ────────────────────────────────────────────────────────
+    _renderMission() {
+      const ds = this.dailyState;
+      const el = qs('#missionSection');
+      const pct = ds.completed ? 100 : 0;
+      el.innerHTML = `
+        <div class="mission-title">${escapeHtml(ds.meta.title)}</div>
+        <div class="mission-desc">${escapeHtml(ds.meta.desc)}.</div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div class="mission-footer">
+          <span class="chip ${ds.rewardClaimed ? 'chip-success' : ds.completed ? 'chip-gold' : 'chip-accent'}">
+            ${ds.rewardClaimed ? '✓ Claimed' : ds.completed ? `+${ds.meta.reward} coins ready` : 'In progress'}
+          </span>
+          <button class="btn ${ds.completed && !ds.rewardClaimed ? 'btn-primary' : ''}" id="claimBtn" type="button" ${ds.completed && !ds.rewardClaimed ? '' : 'disabled'}>
+            ${ds.rewardClaimed ? 'Claimed' : 'Claim reward'}
+          </button>
+        </div>
+        <div class="streak-note">Claim on consecutive days to build your streak — every 3rd day grants an AI token.</div>`;
+      el.querySelector('#claimBtn')?.addEventListener('click', () => this.claimDaily());
+    }
+
+    // ── Input bindings ───────────────────────────────────────────────────────
+    _primaryAction() {
+      const state = this.engine.state;
+      if (state === 'idle' || state === 'over') this.startRun();
+      else if (state === 'running') this.engine.pause();
+      else if (state === 'paused') this.engine.resume();
+    }
+
+    _bindButtons() {
+      // Any button click unlocks audio and drops focus so Space/arrows keep
+      // steering the ship instead of re-triggering the button.
+      document.addEventListener('click', e => {
+        Sound.unlock();
+        const btn = e.target.closest('button');
+        if (btn) btn.blur();
+      });
+      qs('#primaryBtn').addEventListener('click', () => this._primaryAction());
+      qs('#restartBtn').addEventListener('click', () => this.startRun());
+      qs('#fsBtn').addEventListener('click', () => this._toggleFullscreen());
+      qs('#soundBtn').addEventListener('click', () => {
+        Sound.unlock();
+        Sound.muted = !Sound.muted;
+        this.data.soundMuted = Sound.muted;
+        save(this.data);
+        this._syncSoundIcon();
+        if (!Sound.muted) Sound.play('click');
+      });
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.addEventListener('click', () => { Sound.play('click'); this._renderTab(b.dataset.tab); });
+      });
+    }
+
+    _toggleFullscreen() {
+      const wrap = qs('#canvasWrap');
+      if (document.fullscreenElement === wrap) document.exitFullscreen?.();
+      else wrap.requestFullscreen?.().catch(() => this.flash('Fullscreen is not available here.', 'warn'));
+    }
+
+    _bindKeyboard() {
+      document.addEventListener('keydown', e => {
+        const tag = (e.target?.tagName || '').toLowerCase();
+        if (['input', 'select', 'textarea'].includes(tag)) return;
+        Sound.unlock();
+        const k = e.key.toLowerCase();
+        if (k === 'arrowleft' || k === 'a') { e.preventDefault(); if (!e.repeat) this.engine.moveLane('left'); return; }
+        if (k === 'arrowright' || k === 'd') { e.preventDefault(); if (!e.repeat) this.engine.moveLane('right'); return; }
+        if (tag === 'button' && (k === ' ' || k === 'enter')) return; // let focused buttons behave normally
+        if (k === ' ' || k === 'enter') { e.preventDefault(); this._primaryAction(); return; }
+        if (k === 'r') { e.preventDefault(); this.startRun(); return; }
+        if (k === 'f') { e.preventDefault(); this._toggleFullscreen(); return; }
+        if (k === 'm') { e.preventDefault(); qs('#soundBtn').click(); return; }
+        if (k === 'p' || k === 'escape') {
+          e.preventDefault();
+          if (this.engine.state === 'running') this.engine.pause();
+          else if (this.engine.state === 'paused') this.engine.resume();
+        }
+      });
+    }
+
+    _bindTouch() {
+      const bindHold = (id, dir) => {
+        const btn = qs(id);
+        btn.addEventListener('pointerdown', e => {
+          e.preventDefault();
+          Sound.unlock();
+          if (this.engine.state === 'idle' || this.engine.state === 'over') return;
+          this.engine.moveLane(dir);
+        });
+        btn.addEventListener('click', e => e.preventDefault());
+      };
+      bindHold('#touchLeft', 'left');
+      bindHold('#touchRight', 'right');
+
+      const canvas = qs('#gameCanvas');
+      let touchStart = null;
+      canvas.addEventListener('pointerdown', e => {
+        Sound.unlock();
+        touchStart = { x: e.clientX, y: e.clientY, t: performance.now() };
+      });
+      canvas.addEventListener('pointerup', e => {
+        if (!touchStart) return;
+        const dx = e.clientX - touchStart.x;
+        const held = performance.now() - touchStart.t;
+        touchStart = null;
+        const state = this.engine.state;
+        if (state === 'idle' || state === 'over') { this.startRun(); return; }
+        if (state === 'paused') { this.engine.resume(); return; }
+        if (Math.abs(dx) > 24) {
+          this.engine.moveLane(dx < 0 ? 'left' : 'right');
+        } else if (held < 350) {
+          const rect = canvas.getBoundingClientRect();
+          this.engine.moveLane(e.clientX - rect.left < rect.width / 2 ? 'left' : 'right');
+        }
+      });
+      canvas.addEventListener('pointercancel', () => { touchStart = null; });
+    }
+
+    _bindCheats() {
+      document.querySelectorAll('[data-cheat]').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const cheats = new Set((this.data.activeCheats || []).map(s => s.toLowerCase()));
+          if (inp.checked) cheats.add(inp.dataset.cheat);
+          else cheats.delete(inp.dataset.cheat);
+          this.data.activeCheats = [...cheats];
+          save(this.data);
+          this.engine.refreshLoadout();
+          this._setStatus();
+          if (inp.checked && (this.engine.state === 'running' || this.engine.state === 'paused')) {
+            this.flash('Utility enabled — this run no longer earns coins or records.', 'warn');
+          }
+        });
+      });
+    }
+  }
+
+  // ─── BOOT ───────────────────────────────────────────────────────────────────
+  function boot() {
+    // Follow the user's custom site theme when the New UI is active,
+    // otherwise keep stock colors (mirrors how the main site behaves).
+    try {
+      if (localStorage.getItem('xyrex_ui_mode') === 'new') window.XyrexTheme?.loadSavedTheme?.();
+    } catch {}
+    const ui = new DodgeUI();
+
+    // If any other tab or console rewrites the save while the game is open,
+    // re-assert this session's verified state unless the new blob verifies.
+    window.addEventListener('storage', event => {
+      // Only genuine cross-tab writes are browser-trusted; a same-tab console
+      // script dispatching new StorageEvent(...) always has isTrusted === false.
+      if (!event.isTrusted) return;
+      if (typeof event.key !== 'string') return;
+      if (!event.key.endsWith(SAVE_KEY) && !event.key.endsWith(LEDGER_KEY)) return;
+      try {
+        const raw = storageGet(SAVE_KEY);
+        if (raw === lastWrittenRaw) return;
+        if (!verifyStored(JSON.parse(raw), storageGet(LEDGER_KEY))) throw new Error('unverified');
+      } catch {
+        console.warn('Xyrex Dodge anticheat: rejected tampered save data written from another tab.');
+        save(ui.data);
+      }
+    });
+
+    // Read-only debug/test surface (also handy in DevTools). It hands out
+    // snapshots and the headless simulator only — never live engine, save,
+    // or UI references that console scripts could use to forge progress.
+    const debugApi = Object.freeze({
+      version: 5,
+      simulate: (seconds, step) => ui.engine.simulate(seconds, step),
+      getSnapshot() {
+        const d = ui.data;
+        const e = ui.engine;
+        return {
+          state: e.state,
+          score: e.score,
+          runCoins: e.runCoins,
+          combo: e.combo,
+          lives: e.lives,
+          elapsed: +e.elapsed.toFixed(3),
+          coins: d.coins,
+          bestScore: d.bestScore,
+          totalRuns: d.totalRuns,
+          selectedMode: d.selectedMode,
+          activeCheats: [...(d.activeCheats || [])],
+        };
+      },
+    });
+    try {
+      Object.defineProperty(window, 'XyrexDodge', { value: debugApi, writable: false, configurable: false });
+    } catch {
+      window.XyrexDodge = debugApi;
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+})();
+</script>
+</body>
+</html>

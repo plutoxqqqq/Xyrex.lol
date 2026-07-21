@@ -1,0 +1,4508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AetherBeds 2D v5.3.3</title>
+<style>
+  :root {
+    --bg: #070912;
+    --panel: rgba(12, 15, 30, 0.82);
+    --panel2: rgba(22, 28, 52, 0.9);
+    --text: #edf2ff;
+    --muted: #aab3cf;
+    --accent: #8be9ff;
+    --danger: #ff5f78;
+    --good: #72ff9d;
+    --gold: #ffd166;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: radial-gradient(circle at 40% 20%, #11172e 0%, #070912 55%, #03040a 100%);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    user-select: none;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    cursor: crosshair;
+  }
+  #hud {
+    position: fixed;
+    inset: 12px auto auto 12px;
+    padding: 10px 12px;
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    backdrop-filter: blur(12px);
+    min-width: 310px;
+    pointer-events: none;
+  }
+  #hud h1 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  #stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 12px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .stat b { color: white; }
+  .hotbar {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    backdrop-filter: blur(12px);
+    pointer-events: none;
+  }
+  .slot {
+    width: 74px;
+    padding: 7px 8px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    text-align: center;
+    font-size: 12px;
+  }
+  .slot b { display: block; font-size: 14px; }
+  #help {
+    position: fixed;
+    right: 12px;
+    top: 12px;
+    width: min(365px, calc(100vw - 24px));
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.45;
+    backdrop-filter: blur(12px);
+    pointer-events: none;
+  }
+  #help b { color: white; }
+  #centerOverlay, #shop {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+  #centerOverlay { pointer-events: auto; }
+  .card {
+    width: min(620px, calc(100vw - 34px));
+    max-height: calc(100vh - 34px);
+    padding: 24px;
+    border-radius: 24px;
+    background: linear-gradient(180deg, rgba(16, 20, 38, 0.96), rgba(8, 10, 21, 0.96));
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 24px 90px rgba(0,0,0,0.55);
+    text-align: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+  }
+  .card::-webkit-scrollbar,
+  .shopGrid::-webkit-scrollbar,
+  .menuOptions::-webkit-scrollbar {
+    width: 12px;
+  }
+  .card::-webkit-scrollbar-track,
+  .shopGrid::-webkit-scrollbar-track,
+  .menuOptions::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.045);
+    border-radius: 999px;
+  }
+  .card::-webkit-scrollbar-thumb,
+  .shopGrid::-webkit-scrollbar-thumb,
+  .menuOptions::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(139,233,255,0.85), rgba(184,255,242,0.55));
+    border: 3px solid rgba(8,10,21,0.92);
+    border-radius: 999px;
+  }
+  .card::-webkit-scrollbar-thumb:hover,
+  .shopGrid::-webkit-scrollbar-thumb:hover,
+  .menuOptions::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(139,233,255,1), rgba(184,255,242,0.8));
+  }
+  .card,
+  .shopGrid,
+  .menuOptions {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(139,233,255,0.85) rgba(255,255,255,0.045);
+  }
+  .card h2 {
+    margin: 0 0 8px;
+    font-size: clamp(32px, 5vw, 58px);
+    letter-spacing: -0.05em;
+  }
+  .card p { margin: 8px 0; color: var(--muted); }
+  .card .primary { color: var(--accent); font-weight: 800; }
+
+  .menuOptions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 18px 0 16px;
+    text-align: left;
+  }
+  .menuField {
+    padding: 12px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.055);
+    border: 1px solid rgba(255,255,255,0.09);
+  }
+  .menuField label {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .menuField select {
+    width: 100%;
+    color: white;
+    background: rgba(5,8,18,0.95);
+    border: 1px solid rgba(139,233,255,0.28);
+    border-radius: 12px;
+    padding: 10px 12px;
+    outline: none;
+    font-weight: 800;
+  }
+  .menuField small { display: block; margin-top: 6px; color: var(--muted); line-height: 1.35; }
+  .menuButtons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 12px; }
+  .menuBtn {
+    border: 0;
+    color: #061018;
+    background: linear-gradient(135deg, var(--accent), #b8fff2);
+    padding: 12px 18px;
+    border-radius: 14px;
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: 0 12px 30px rgba(139,233,255,0.16);
+  }
+  .menuBtn.secondary { color: white; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); box-shadow: none; }
+  .shopSectionTitle {
+    margin: 18px 0 8px;
+    color: var(--accent);
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-size: 12px;
+  }
+  #shop {
+    display: none;
+    pointer-events: auto;
+  }
+  #shop .card {
+    text-align: left;
+    width: min(940px, calc(100vw - 34px));
+    max-height: calc(100vh - 34px);
+    padding-right: 18px;
+  }
+  #shop h2 { font-size: 34px; margin-bottom: 2px; }
+  .shopGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+  }
+  #shop .shopGrid {
+    max-height: 38vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 8px;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  .buy {
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.09);
+    cursor: pointer;
+    transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  }
+  .buy:hover {
+    transform: translateY(-1px);
+    background: rgba(139,233,255,0.09);
+    border-color: rgba(139,233,255,0.38);
+  }
+  .buy b { color: white; }
+  .buy span { display: block; color: var(--muted); margin-top: 3px; font-size: 12px; }
+  .buy small { display: block; color: var(--accent); margin-top: 6px; font-size: 11px; font-weight: 800; }
+  #toast {
+    position: fixed;
+    left: 50%;
+    top: 92px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    pointer-events: none;
+  }
+  .toastItem {
+    padding: 8px 12px;
+    background: rgba(5, 8, 18, 0.86);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    color: white;
+    font-size: 13px;
+    box-shadow: 0 12px 35px rgba(0,0,0,0.35);
+  }
+  @media (max-width: 720px) {
+    #help { display: none; }
+    #hud { min-width: 270px; }
+    .card { max-height: calc(100vh - 18px); padding: 18px; }
+    #shop .card { max-height: calc(100vh - 18px); }
+    #shop .shopGrid { max-height: 32vh; }
+    .shopGrid, .menuOptions { grid-template-columns: 1fr; }
+    .hotbar { transform: translateX(-50%) scale(0.88); bottom: 8px; }
+  }
+</style>
+
+<style>
+/* v5.2 polished mod-menu scrollbars */
+#abv5, #abv4,
+#abv5Body, #abv4Body,
+#abv5Settings, #abv4Settings {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139,233,255,.55) rgba(255,255,255,.035);
+}
+
+#abv5Body::-webkit-scrollbar,
+#abv4Body::-webkit-scrollbar,
+#abv5Settings::-webkit-scrollbar,
+#abv4Settings::-webkit-scrollbar {
+  width: 9px;
+}
+
+#abv5Body::-webkit-scrollbar-track,
+#abv4Body::-webkit-scrollbar-track,
+#abv5Settings::-webkit-scrollbar-track,
+#abv4Settings::-webkit-scrollbar-track {
+  background: rgba(255,255,255,.035);
+  border-radius: 999px;
+  margin: 10px 0;
+}
+
+#abv5Body::-webkit-scrollbar-thumb,
+#abv4Body::-webkit-scrollbar-thumb,
+#abv5Settings::-webkit-scrollbar-thumb,
+#abv4Settings::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(139,233,255,.70), rgba(139,233,255,.28));
+  border: 2px solid rgba(8,10,21,.92);
+  border-radius: 999px;
+}
+
+#abv5Body::-webkit-scrollbar-thumb:hover,
+#abv4Body::-webkit-scrollbar-thumb:hover,
+#abv5Settings::-webkit-scrollbar-thumb:hover,
+#abv4Settings::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(139,233,255,.95), rgba(139,233,255,.45));
+}
+</style>
+
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <h1>AetherBeds 2D v5.3.3</h1>
+  <div id="stats"></div>
+</div>
+
+<div id="help">
+  <b>Controls</b><br>
+  WASD move · Mouse aim · Left click attack/break · Right click place wool · <b>Space</b> dash · <b>E</b> shop · <b>F</b> bow · <b>Q</b> fireball · <b>G</b> gapple · <b>R</b> TNT · <b>T</b> pearl · <b>P</b> pause<br><br>
+  Protect your bed. Build, combo, upgrade, break the blue bed, then final-kill the bot. Use the menu dropdowns before starting to choose difficulty, kit, map, style, and bot personality.
+</div>
+
+<div class="hotbar" id="hotbar"></div>
+<div id="toast"></div>
+
+<div id="centerOverlay">
+  <div class="card" id="centerCard">
+    <h2>AetherBeds 2D v5.3.3</h2>
+    <p class="primary">Original 2D bed-defense arena</p>
+    <p>Choose your match settings, collect iron/gold/diamonds/emeralds, defend your bed, then final-kill the bot. Scroll this menu if options go below your screen.</p>
+    <div class="menuOptions">
+      <div class="menuField">
+        <label for="difficultySelect">Bot difficulty</label>
+        <select id="difficultySelect"></select>
+        <small>Same speed, gear, HP, and material access. Higher difficulty only improves decisions, aim, bow prediction, combos, and clutching.</small>
+      </div>
+      <div class="menuField">
+        <label for="botStyleSelect">Bot personality</label>
+        <select id="botStyleSelect"></select>
+        <small>Changes playstyle, not unfair stats.</small>
+      </div>
+      <div class="menuField">
+        <label for="kitSelect">Your kit</label>
+        <select id="kitSelect"></select>
+        <small id="kitLabel">Warrior</small>
+      </div>
+      <div class="menuField">
+        <label for="mapSelect">Map</label>
+        <select id="mapSelect"></select>
+        <small id="mapLabel">Classic</small>
+      </div>
+      <div class="menuField">
+        <label for="styleSelect">Team style</label>
+        <select id="styleSelect"></select>
+        <small id="styleLabel">Crimson</small>
+      </div>
+      <div class="menuField">
+        <label for="modeSelect">Match mode</label>
+        <select id="modeSelect">
+          <option value="normal">Normal generators</option>
+          <option value="rush">Rush generators</option>
+          <option value="slow">Slow tactical</option>
+        </select>
+        <small>Changes resource pacing for more variety.</small>
+      </div>
+    </div>
+    <div class="menuButtons">
+      <button class="menuBtn" id="startBtn">Start match</button>
+      <button class="menuBtn secondary" id="randomBtn">Randomise setup</button>
+    </div>
+    <p>Keyboard still works in-game: <b>Enter</b> start/restart · <b>E</b> shop · <b>Space</b> dash.</p>
+  </div>
+</div>
+
+<div id="shop">
+  <div class="card">
+    <h2>Base Shop</h2>
+    <p>Click an item or press the number key. Press <b>E</b> to close. Scroll the shop sections to see everything. Diamonds now buy team upgrades.</p>
+    <div class="shopSectionTitle">Items</div>
+    <div class="shopGrid">
+      <div class="buy" data-buy="1"><b>1 · Wool Bundle</b><span>16 blocks — 8 iron</span><small>Builder kit gets +8 bonus blocks</small></div>
+      <div class="buy" data-buy="2"><b>2 · Sword Upgrade</b><span>Stone: 12 iron · Iron: 8 gold · Diamond: 4 emeralds</span><small>Higher damage and combo pressure</small></div>
+      <div class="buy" data-buy="3"><b>3 · Armor Upgrade</b><span>Leather: 8 gold · Iron: 4 emeralds · Diamond: 8 emeralds</span><small>Reduces incoming damage</small></div>
+      <div class="buy" data-buy="4"><b>4 · Pickaxe Upgrade</b><span>Wood: 4 gold · Iron: 8 gold · Diamond: 2 emeralds</span><small>Break beds and blocks faster</small></div>
+      <div class="buy" data-buy="5"><b>5 · Bow / Arrow Refill</b><span>Unlock bow +16 arrows: 8 gold · Refill: 3 gold</span><small>Press F to shoot</small></div>
+      <div class="buy" data-buy="6"><b>6 · Fireball</b><span>Explosive projectile — 6 gold</span><small>Press Q to throw</small></div>
+      <div class="buy" data-buy="7"><b>7 · TNT</b><span>Bridge/base breaker — 8 gold</span><small>Press R to toss</small></div>
+      <div class="buy" data-buy="8"><b>8 · Golden Apple</b><span>Heal + brief protection — 2 emeralds</span><small>Instant use on buy</small></div>
+      <div class="buy" data-buy="9"><b>9 · Speed Boots</b><span>Permanent speed boost — 3 emeralds</span><small>Stacks once</small></div>
+      <div class="buy" data-buy="0"><b>0 · Ender Pearl</b><span>Short teleport pearl — 4 emeralds</span><small>Press T to throw</small></div>
+      <div class="buy" data-buy="gapple"><b>Gapple Pack</b><span>2 golden apples — 3 emeralds</span><small>Useful before a bed rush</small></div>
+      <div class="buy" data-buy="blockpack"><b>Bridge Pack</b><span>48 blocks + 1 fireball — 20 iron + 2 gold</span><small>Rush refill bundle</small></div>
+    </div>
+    <div class="shopSectionTitle">Diamond upgrades</div>
+    <div class="shopGrid">
+      <div class="buy" data-buy="u1"><b>Sharpness</b><span>Tier I/II/III — 4/8/12 diamonds</span><small>More sword damage for you</small></div>
+      <div class="buy" data-buy="u2"><b>Protection</b><span>Tier I/II/III — 3/6/10 diamonds</span><small>Extra damage reduction</small></div>
+      <div class="buy" data-buy="u3"><b>Haste</b><span>Tier I/II — 3/7 diamonds</span><small>Break blocks and beds faster</small></div>
+      <div class="buy" data-buy="u4"><b>Forge</b><span>Tier I/II/III — 2/5/9 diamonds</span><small>Faster base iron/gold spawning</small></div>
+      <div class="buy" data-buy="u5"><b>Heal Pool</b><span>1 diamond</span><small>Slow regen at your base</small></div>
+      <div class="buy" data-buy="u6"><b>Alarm Trap</b><span>2 diamonds</span><small>Reveals and slows a bed attacker once</small></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const statsEl = document.getElementById('stats');
+  const hotbarEl = document.getElementById('hotbar');
+  const shopEl = document.getElementById('shop');
+  const centerOverlay = document.getElementById('centerOverlay');
+  const centerCard = document.getElementById('centerCard');
+  const toastEl = document.getElementById('toast');
+  const difficultySelect = document.getElementById('difficultySelect');
+  const botStyleSelect = document.getElementById('botStyleSelect');
+  const kitSelect = document.getElementById('kitSelect');
+  const mapSelect = document.getElementById('mapSelect');
+  const styleSelect = document.getElementById('styleSelect');
+  const modeSelect = document.getElementById('modeSelect');
+  const startBtn = document.getElementById('startBtn');
+  const randomBtn = document.getElementById('randomBtn');
+  const kitLabel = document.getElementById('kitLabel');
+  const mapLabel = document.getElementById('mapLabel');
+  const styleLabel = document.getElementById('styleLabel');
+
+  const TILE = 32;
+  const MAP_W = 76;
+  const MAP_H = 48;
+  const WORLD_W = MAP_W * TILE;
+  const WORLD_H = MAP_H * TILE;
+
+  const VOID = 0, GRASS = 1, RED_BLOCK = 2, BLUE_BLOCK = 3, MID = 4, STONE = 5;
+
+  const swordNames = ['Wood', 'Stone', 'Iron', 'Diamond'];
+  const armorNames = ['None', 'Leather', 'Iron', 'Diamond'];
+  const pickaxeNames = ['None', 'Wood', 'Iron', 'Diamond'];
+
+  // Fair difficulty: every bot has the same starting material, HP, speed, damage, gear access, and shop access.
+  // Difficulty only changes AI skill: aim, prediction, reaction time, path choice, clutch timing, combo timing, and how badly it panics.
+  const botProfiles = [
+    { label: 'Rookie', skill: 1, think: 1.05, aimError: 0.72, bowLead: 0.12, reaction: 0.34, bridgeCd: 0.26, breakNeed: 0.74, detect: 210, comboSense: 0.25, objectiveSense: 0.34, clutchSense: 0.25, strafeSense: 0.18, panic: 0.82 },
+    { label: 'Normal', skill: 2, think: 0.68, aimError: 0.40, bowLead: 0.38, reaction: 0.18, bridgeCd: 0.18, breakNeed: 0.54, detect: 285, comboSense: 0.48, objectiveSense: 0.58, clutchSense: 0.48, strafeSense: 0.45, panic: 0.46 },
+    { label: 'Sweaty', skill: 3, think: 0.36, aimError: 0.18, bowLead: 0.72, reaction: 0.08, bridgeCd: 0.12, breakNeed: 0.38, detect: 365, comboSense: 0.76, objectiveSense: 0.82, clutchSense: 0.76, strafeSense: 0.78, panic: 0.20 },
+    { label: 'Nightmare', skill: 4, think: 0.20, aimError: 0.055, bowLead: 0.96, reaction: 0.02, bridgeCd: 0.08, breakNeed: 0.26, detect: 455, comboSense: 0.95, objectiveSense: 0.96, clutchSense: 0.95, strafeSense: 0.94, panic: 0.07 },
+    { label: 'God', skill: 5, think: 0.12, aimError: 0.03, bowLead: 1.05, reaction: 0.035, bridgeCd: 0.065, breakNeed: 0.18, detect: 620, comboSense: 1.08, objectiveSense: 1.12, clutchSense: 1.08, strafeSense: 1.05, panic: 0.03 }
+  ];
+
+  const botPersonalities = [
+    { id: 'adaptive', name: 'Adaptive', desc: 'Balances rushing, defending, diamonds, and mid control.' },
+    { id: 'rusher', name: 'Rusher', desc: 'Pressures your bed early and takes close fights often.' },
+    { id: 'defender', name: 'Defender', desc: 'Protects its bed, counters rushes, then attacks.' },
+    { id: 'collector', name: 'Collector', desc: 'Prioritises diamonds/emeralds before committing.' },
+    { id: 'archer', name: 'Archer', desc: 'Uses bows more often and holds angles.' },
+    { id: 'trickster', name: 'Trickster', desc: 'Uses TNT/fireballs/pearls more often.' }
+  ];
+
+  const matchModes = {
+    normal: { name: 'Normal generators', iron: 1, gold: 1, diamond: 1, emerald: 1 },
+    rush: { name: 'Rush generators', iron: 0.68, gold: 0.72, diamond: 0.78, emerald: 0.86 },
+    slow: { name: 'Slow tactical', iron: 1.28, gold: 1.24, diamond: 1.18, emerald: 1.12 }
+  };
+
+  const BOT_BASE = { hp: 24, speed: 225, blocks: 32, sword: 0, armor: 0, pickaxe: 0, arrows: 0, fireballs: 0, tnt: 0, pearls: 0 };
+
+  const kits = [
+    { name: 'Warrior', desc: '+stone sword, stronger combos', apply(p){ p.sword = Math.max(p.sword, 1); p.comboPower = 1.18; p.attackSpeedBonus = 0.04; } },
+    { name: 'Builder', desc: '+64 blocks, cheaper wool bonus', apply(p){ p.blocks += 64; p.builderBonus = true; p.placeReachBonus = 32; } },
+    { name: 'Miner', desc: '+pickaxe, more resource value', apply(p){ p.pickaxe = Math.max(p.pickaxe, 1); p.minerBonus = true; p.bedDamageBonus = 0.8; } },
+    { name: 'Archer', desc: 'starts with bow and arrows', apply(p){ p.bow = true; p.arrows += 24; p.bowSpeedBonus = 0.16; } },
+    { name: 'Tank', desc: '+HP and leather armor', apply(p){ p.maxHp += 8; p.hp = p.maxHp; p.armor = Math.max(p.armor, 1); p.speed -= 12; } },
+    { name: 'Assassin', desc: 'faster dash, longer combo window', apply(p){ p.speed += 18; p.dashBonus = 0.25; p.comboWindowBonus = 0.18; } }
+  ];
+
+  const mapVariants = [
+    { name: 'Classic' },
+    { name: 'Crossroads' },
+    { name: 'Ring Mid' },
+    { name: 'Chaos Isles' }
+  ];
+
+  const teamStyles = [
+    { name: 'Crimson', player: '#ff5f78', block: '#d94762', bed: '#ff4f70', soft: '#ffb6c4' },
+    { name: 'Violet', player: '#b684ff', block: '#8558f0', bed: '#a46bff', soft: '#dcc6ff' },
+    { name: 'Mint', player: '#66f2b6', block: '#29b982', bed: '#5dffc3', soft: '#c8ffe9' },
+    { name: 'Gold', player: '#ffd166', block: '#d49b28', bed: '#ffca4f', soft: '#ffe4a3' }
+  ];
+  const blueStyle = { player: '#61a8ff', block: '#4d83f1', bed: '#5790ff', soft: '#b8d0ff' };
+
+  let map, player, enemy, redBed, blueBed, generators, resources, projectiles, particles;
+  let state = 'menu';
+  let paused = false;
+  let shopOpen = false;
+  let lastTime = performance.now();
+  let camX = 0, camY = 0;
+  let mouse = { x: 0, y: 0, worldX: 0, worldY: 0, down: false };
+  let keys = new Set();
+  let messages = [];
+  let gameTime = 0;
+  let enemyThink = 0;
+  let screenShake = 0;
+  let selectedBotIndex = 1;
+  let selectedBotStyleIndex = 0;
+  let selectedMode = 'normal';
+  let selectedKitIndex = 0;
+  let selectedMapIndex = 0;
+  let selectedStyleIndex = 0;
+  let attackSwings = [];
+  let floatingTexts = [];
+  let antiCheat = {
+    enabled: true,
+    lastX: 0,
+    lastY: 0,
+    lastT: 0,
+    strikes: 0,
+    wins: [],
+    graceUntil: 0,
+    lastLegitTeleport: 0,
+    lastLegitAttack: -Infinity,
+    lastLegitDash: -Infinity,
+    lastLegitPlace: -Infinity,
+    lastLegitProjectile: -Infinity,
+    lastItems: null,
+    suspicious: []
+  };
+
+  function resize() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = innerWidth + 'px';
+    canvas.style.height = innerHeight + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  addEventListener('resize', resize);
+  resize();
+
+  function idx(gx, gy) { return gy * MAP_W + gx; }
+  function inBounds(gx, gy) { return gx >= 0 && gy >= 0 && gx < MAP_W && gy < MAP_H; }
+  function getTile(gx, gy) { return inBounds(gx, gy) ? map[idx(gx, gy)] : VOID; }
+  function setTile(gx, gy, t) { if (inBounds(gx, gy)) map[idx(gx, gy)] = t; }
+  function gx(x) { return Math.floor(x / TILE); }
+  function gy(y) { return Math.floor(y / TILE); }
+  function centerOf(gx, gy) { return { x: gx * TILE + TILE / 2, y: gy * TILE + TILE / 2 }; }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function dist(a, b, c, d) { return Math.hypot(a - c, b - d); }
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function choice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function currentBotProfile() { return botProfiles[selectedBotIndex]; }
+  function currentBotPersonality() { return botPersonalities[selectedBotStyleIndex]; }
+  function currentMode() { return matchModes[selectedMode] || matchModes.normal; }
+  function setBotDifficulty(i) {
+    selectedBotIndex = clamp(i, 0, botProfiles.length - 1);
+    if (difficultySelect) difficultySelect.value = String(selectedBotIndex);
+  }
+  function setBotPersonality(i) {
+    selectedBotStyleIndex = (i + botPersonalities.length) % botPersonalities.length;
+    if (botStyleSelect) botStyleSelect.value = String(selectedBotStyleIndex);
+  }
+  function setKit(i) {
+    selectedKitIndex = (i + kits.length) % kits.length;
+    if (kitSelect) kitSelect.value = String(selectedKitIndex);
+    if (kitLabel) kitLabel.textContent = kits[selectedKitIndex].desc;
+  }
+  function setMapVariant(i) {
+    selectedMapIndex = (i + mapVariants.length) % mapVariants.length;
+    if (mapSelect) mapSelect.value = String(selectedMapIndex);
+    if (mapLabel) mapLabel.textContent = mapVariants[selectedMapIndex].name;
+  }
+  function setTeamStyle(i) {
+    selectedStyleIndex = (i + teamStyles.length) % teamStyles.length;
+    if (styleSelect) styleSelect.value = String(selectedStyleIndex);
+    if (styleLabel) styleLabel.textContent = teamStyles[selectedStyleIndex].name;
+  }
+  function setMode(mode) {
+    selectedMode = matchModes[mode] ? mode : 'normal';
+    if (modeSelect) modeSelect.value = selectedMode;
+  }
+  function styleFor(team) { return team === 'red' ? teamStyles[selectedStyleIndex] : blueStyle; }
+  function applySelectedKit(p) {
+    p.kit = kits[selectedKitIndex].name;
+    p.kitDesc = kits[selectedKitIndex].desc;
+    kits[selectedKitIndex].apply(p);
+  }
+
+  function isWalkableTile(t) { return t === GRASS || t === RED_BLOCK || t === BLUE_BLOCK || t === MID || t === STONE; }
+  function isWalkableAt(x, y) { return isWalkableTile(getTile(gx(x), gy(y))); }
+
+  function addEllipse(cx, cy, rx, ry, tile) {
+    for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++) {
+      for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
+        const nx = (x - cx) / rx;
+        const ny = (y - cy) / ry;
+        if (nx * nx + ny * ny <= 1) setTile(x, y, tile);
+      }
+    }
+  }
+
+  function addBridge(x1, y1, x2, y2, tile, width = 1) {
+    const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1) * 2);
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = Math.round(x1 + (x2 - x1) * t);
+      const y = Math.round(y1 + (y2 - y1) * t);
+      for (let wy = -width; wy <= width; wy++) {
+        for (let wx = -width; wx <= width; wx++) setTile(x + wx, y + wy, tile);
+      }
+    }
+  }
+
+  function makeMap() {
+    map = new Uint8Array(MAP_W * MAP_H);
+    const variant = mapVariants[selectedMapIndex]?.name || 'Classic';
+
+    if (variant === 'Classic') {
+      addEllipse(13, 35, 10, 7, GRASS);
+      addEllipse(62, 12, 10, 7, GRASS);
+      addEllipse(38, 24, 12, 8, MID);
+      addEllipse(20, 18, 6, 4, STONE);
+      addEllipse(56, 30, 6, 4, STONE);
+      addEllipse(38, 8, 5, 3, STONE);
+      addEllipse(38, 40, 5, 3, STONE);
+      addBridge(22, 31, 24, 29, RED_BLOCK, 0);
+      addBridge(53, 16, 51, 18, BLUE_BLOCK, 0);
+    } else if (variant === 'Crossroads') {
+      addEllipse(12, 36, 10, 7, GRASS);
+      addEllipse(63, 11, 10, 7, GRASS);
+      addEllipse(38, 24, 9, 9, MID);
+      addEllipse(14, 14, 6, 4, STONE);
+      addEllipse(61, 34, 6, 4, STONE);
+      addEllipse(38, 8, 5, 3, STONE);
+      addEllipse(38, 40, 5, 3, STONE);
+      addBridge(22, 33, 31, 28, STONE, 0);
+      addBridge(54, 15, 45, 20, STONE, 0);
+      addBridge(38, 15, 38, 33, STONE, 0);
+    } else if (variant === 'Ring Mid') {
+      addEllipse(13, 35, 9, 7, GRASS);
+      addEllipse(62, 12, 9, 7, GRASS);
+      addEllipse(38, 24, 14, 10, MID);
+      addEllipse(38, 24, 6, 4, VOID);
+      addEllipse(20, 17, 6, 4, STONE);
+      addEllipse(56, 31, 6, 4, STONE);
+      addEllipse(24, 40, 4, 3, STONE);
+      addEllipse(52, 8, 4, 3, STONE);
+      addBridge(24, 31, 29, 28, RED_BLOCK, 0);
+      addBridge(51, 17, 47, 20, BLUE_BLOCK, 0);
+    } else {
+      addEllipse(11, 37, 8, 6, GRASS);
+      addEllipse(64, 10, 8, 6, GRASS);
+      addEllipse(38, 24, 8, 6, MID);
+      addEllipse(28, 24, 5, 4, STONE);
+      addEllipse(48, 24, 5, 4, STONE);
+      addEllipse(38, 14, 5, 3, STONE);
+      addEllipse(38, 34, 5, 3, STONE);
+      addEllipse(20, 29, 4, 3, STONE);
+      addEllipse(56, 19, 4, 3, STONE);
+      addBridge(18, 34, 22, 31, RED_BLOCK, 0);
+      addBridge(57, 13, 54, 16, BLUE_BLOCK, 0);
+    }
+
+    // Diamond generator islands are guaranteed on every map so upgrades are never dead content.
+    addEllipse(20, 18, 4, 3, STONE);
+    addEllipse(56, 30, 4, 3, STONE);
+    addEllipse(38, 8, 4, 3, STONE);
+    addEllipse(38, 40, 4, 3, STONE);
+  }
+
+  function makePlayer(x, y, team) {
+    return {
+      x, y, vx: 0, vy: 0, r: 16, team,
+      hp: 24, maxHp: 24, speed: 225,
+      inv: { iron: 0, gold: 0, diamond: 0, emerald: 0 },
+      blocks: 32, sword: 0, armor: 0, pickaxe: 0, bow: false, arrows: 0,
+      fireballs: 0, tnt: 0, pearls: 0, gapples: 0, speedBoots: false, trap: false,
+      sharpness: 0, protection: 0, haste: 0, forge: 0, healPool: false, alarmTrap: false,
+      combo: 0, comboTimer: 0, comboPower: 1, comboWindowBonus: 0, attackSpeedBonus: 0, bowSpeedBonus: 0,
+      bedDamageBonus: 0, builderBonus: false, minerBonus: false, placeReachBonus: 0, dashBonus: 0,
+      attackCd: 0, bowCd: 0, dashCd: 0, invuln: 0, respawn: 0, alive: true,
+      voidTime: 0, ground: 1, bridgeCd: 0, clutchCd: 0,
+      kills: 0, finalKills: 0, bedBreaks: 0, kit: 'None' 
+    };
+  }
+
+  function makeEnemy() {
+    const profile = currentBotProfile();
+    const personality = currentBotPersonality();
+    const e = makePlayer(62 * TILE + 16, 12 * TILE + 16, 'blue');
+    e.maxHp = e.hp = BOT_BASE.hp;
+    e.speed = BOT_BASE.speed;
+    e.blocks = BOT_BASE.blocks;
+    e.sword = BOT_BASE.sword;
+    e.armor = BOT_BASE.armor;
+    e.pickaxe = BOT_BASE.pickaxe;
+    e.arrows = BOT_BASE.arrows;
+    e.fireballs = BOT_BASE.fireballs;
+    e.tnt = BOT_BASE.tnt;
+    e.pearls = BOT_BASE.pearls;
+    e.brain = 'fair-adaptive';
+    e.variant = personality.id;
+    e.breakTimer = 0;
+    e.name = `${profile.label} ${personality.name}`;
+    e.profile = profile;
+    e.personality = personality;
+    e.goal = 'spawn';
+    e.aiDelay = profile.reaction;
+    e.bridgeCd = 0;
+    e.strafe = choice([-1, 1]);
+    e.strafeTimer = rand(0.4, 1.2);
+    e.memory = { lastSeenPlayer: 0, pressure: 0, stuck: 0, lastX: e.x, lastY: e.y, goalSwitch: 0 };
+    if (profile.label === 'God') {
+      e.maxHp = e.hp = 48;
+      e.speed = 255;
+      e.blocks = 160;
+      e.sword = 3;
+      e.armor = 3;
+      e.pickaxe = 3;
+      e.bow = true;
+      e.arrows = 96;
+      e.fireballs = 8;
+      e.tnt = 4;
+      e.pearls = 3;
+      e.sharpness = 3;
+      e.protection = 3;
+      e.haste = 2;
+      e.forge = 3;
+      e.healPool = true;
+      e.alarmTrap = true;
+    }
+    return e;
+  }
+
+  function initGame() {
+    makeMap();
+    player = makePlayer(13 * TILE + 16, 35 * TILE + 16, 'red');
+    applySelectedKit(player);
+    enemy = makeEnemy();
+    redBed = { x: 12 * TILE + 2, y: 35 * TILE + 3, w: 60, h: 27, team: 'red', hp: 22, maxHp: 22, alive: true };
+    blueBed = { x: 61 * TILE + 2, y: 12 * TILE + 3, w: 60, h: 27, team: 'blue', hp: 22, maxHp: 22, alive: true };
+    const pace = currentMode();
+    generators = [
+      { x: 13 * TILE + 16, y: 36 * TILE + 16, type: 'iron', rate: 0.45 * pace.iron, timer: 0, max: 18, team: 'red', baseRate: 0.45 * pace.iron },
+      { x: 15 * TILE + 16, y: 36 * TILE + 16, type: 'gold', rate: 2.8 * pace.gold, timer: 0, max: 8, team: 'red', baseRate: 2.8 * pace.gold },
+      { x: 62 * TILE + 16, y: 11 * TILE + 16, type: 'iron', rate: 0.45 * pace.iron, timer: 0, max: 18, team: 'blue', baseRate: 0.45 * pace.iron },
+      { x: 60 * TILE + 16, y: 11 * TILE + 16, type: 'gold', rate: 2.8 * pace.gold, timer: 0, max: 8, team: 'blue', baseRate: 2.8 * pace.gold },
+      { x: 38 * TILE + 16, y: 24 * TILE + 16, type: 'emerald', rate: 7.5 * pace.emerald, timer: 0, max: 6, baseRate: 7.5 * pace.emerald },
+      { x: 20 * TILE + 16, y: 18 * TILE + 16, type: 'diamond', rate: 6.2 * pace.diamond, timer: 0, max: 5, baseRate: 6.2 * pace.diamond },
+      { x: 56 * TILE + 16, y: 30 * TILE + 16, type: 'diamond', rate: 6.2 * pace.diamond, timer: 0, max: 5, baseRate: 6.2 * pace.diamond },
+      { x: 38 * TILE + 16, y: 8 * TILE + 16, type: 'diamond', rate: 7.0 * pace.diamond, timer: 0, max: 4, baseRate: 7.0 * pace.diamond },
+      { x: 38 * TILE + 16, y: 40 * TILE + 16, type: 'diamond', rate: 7.0 * pace.diamond, timer: 0, max: 4, baseRate: 7.0 * pace.diamond }
+    ];
+    resources = [];
+    projectiles = [];
+    particles = [];
+    attackSwings = [];
+    floatingTexts = [];
+    messages = [];
+    gameTime = 0;
+    enemyThink = 0;
+    screenShake = 0;
+    paused = false;
+    shopOpen = false;
+    state = 'playing';
+    centerOverlay.style.display = 'none';
+    shopEl.style.display = 'none';
+    window.AetherBedsBattlepass?.startGame?.({
+      difficulty: currentBotProfile()?.label || 'Normal',
+      kit: player?.kit || kits[selectedKitIndex]?.name || 'None',
+      mode: currentMode()?.name || 'Normal generators'
+    });
+    toast('Match started. Protect your bed.');
+  }
+
+  function toast(text) {
+    messages.unshift({ text, life: 3.2 });
+    if (messages.length > 4) messages.pop();
+    renderToasts();
+  }
+
+  function renderToasts() {
+    toastEl.innerHTML = messages.map(m => `<div class="toastItem">${escapeHtml(m.text)}</div>`).join('');
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
+  }
+
+  function endGame(win) {
+    state = 'gameover';
+    shopOpen = false;
+    shopEl.style.display = 'none';
+    if (win) antiCheat.wins.push(performance.now());
+    window.AetherBedsBattlepass?.awardGame?.(win, {
+      kills: player?.kills || 0,
+      finalKills: player?.finalKills || 0,
+      bedBreaks: player?.bedBreaks || 0,
+      seconds: Math.max(0, Math.round(gameTime || 0)),
+      difficulty: currentBotProfile()?.label || 'Normal',
+      kit: player?.kit || kits[selectedKitIndex]?.name || 'None',
+      mode: currentMode()?.name || 'Normal generators'
+    });
+    centerOverlay.style.display = 'grid';
+    centerCard.innerHTML = win
+      ? `<h2>Victory</h2><p class="primary">Blue team eliminated.</p><p>You broke the enemy bed and got the final kill.</p><p>Press <b>Enter</b> to play again.</p><div class='menuButtons'><button class='menuBtn secondary' onclick='location.reload()'>Exit to menu</button></div>`
+      : `<h2>Defeat</h2><p class="primary" style="color:var(--danger)">Your bed was gone and you died.</p><p>Build earlier, defend your bed, and upgrade faster.</p><p>Press <b>Enter</b> to restart.</p><div class='menuButtons'><button class='menuBtn secondary' onclick='location.reload()'>Exit to menu</button></div>`;
+  }
+
+  function spend(inv, type, amount) {
+    if ((inv[type] || 0) >= amount) { inv[type] -= amount; return true; }
+    toast(`Need ${amount} ${type}.`);
+    return false;
+  }
+
+  function spendMulti(inv, cost) {
+    const missing = Object.entries(cost).filter(([type, amount]) => (inv[type] || 0) < amount);
+    if (missing.length) {
+      toast('Need ' + missing.map(([type, amount]) => `${amount} ${type}`).join(' + '));
+      return false;
+    }
+    for (const [type, amount] of Object.entries(cost)) inv[type] -= amount;
+    return true;
+  }
+
+  function applyForgeUpgrade(team, level) {
+    for (const g of generators || []) {
+      if (g.team !== team) continue;
+      if (g.type === 'iron') g.rate = g.baseRate * Math.max(0.42, 1 - level * 0.17);
+      if (g.type === 'gold') g.rate = g.baseRate * Math.max(0.55, 1 - level * 0.13);
+      g.max = Math.round((g.type === 'iron' ? 18 : 8) + level * (g.type === 'iron' ? 4 : 2));
+    }
+  }
+
+  function buy(slot, force = false) {
+    if (state !== 'playing') return false;
+    if (!force && !shopOpen) return false;
+    if (slot === '1') {
+      if (spend(player.inv, 'iron', 8)) {
+        const amount = player.builderBonus ? 24 : 16;
+        player.blocks += amount;
+        toast(`+${amount} wool blocks`);
+      }
+    } else if (slot === '2') {
+      if (player.sword === 0 && spend(player.inv, 'iron', 12)) { player.sword = 1; toast('Sword upgraded to Stone.'); }
+      else if (player.sword === 1 && spend(player.inv, 'gold', 8)) { player.sword = 2; toast('Sword upgraded to Iron.'); }
+      else if (player.sword === 2 && spend(player.inv, 'emerald', 4)) { player.sword = 3; toast('Sword upgraded to Diamond.'); }
+      else if (player.sword >= 3) toast('Sword already maxed.');
+    } else if (slot === '3') {
+      if (player.armor === 0 && spend(player.inv, 'gold', 8)) { player.armor = 1; toast('Leather armor bought.'); }
+      else if (player.armor === 1 && spend(player.inv, 'emerald', 4)) { player.armor = 2; toast('Iron armor bought.'); }
+      else if (player.armor === 2 && spend(player.inv, 'emerald', 8)) { player.armor = 3; toast('Diamond armor bought.'); }
+      else if (player.armor >= 3) toast('Armor already maxed.');
+    } else if (slot === '4') {
+      if (player.pickaxe === 0 && spend(player.inv, 'gold', 4)) { player.pickaxe = 1; toast('Wood pickaxe bought.'); }
+      else if (player.pickaxe === 1 && spend(player.inv, 'gold', 8)) { player.pickaxe = 2; toast('Iron pickaxe bought.'); }
+      else if (player.pickaxe === 2 && spend(player.inv, 'emerald', 2)) { player.pickaxe = 3; toast('Diamond pickaxe bought.'); }
+      else if (player.pickaxe >= 3) toast('Pickaxe already maxed.');
+    } else if (slot === '5') {
+      if (!player.bow) {
+        if (spend(player.inv, 'gold', 8)) { player.bow = true; player.arrows += 16; toast('Bow unlocked. +16 arrows.'); }
+      } else if (spend(player.inv, 'gold', 3)) { player.arrows += 16; toast('+16 arrows.'); }
+    } else if (slot === '6') {
+      if (spend(player.inv, 'gold', 6)) { player.fireballs++; toast('+1 fireball. Press Q to throw.'); }
+    } else if (slot === '7') {
+      if (spend(player.inv, 'gold', 8)) { player.tnt++; toast('+1 TNT. Press R to toss.'); }
+    } else if (slot === '8') {
+      if (spend(player.inv, 'emerald', 2)) { player.hp = Math.min(player.maxHp, player.hp + 12); player.invuln = Math.max(player.invuln, 1.0); toast('Golden apple used.'); }
+    } else if (slot === '9') {
+      if (player.speedBoots) toast('Speed boots already bought.');
+      else if (spend(player.inv, 'emerald', 3)) { player.speedBoots = true; player.speed += 28; toast('Speed boots equipped.'); }
+    } else if (slot === '0') {
+      if (spend(player.inv, 'emerald', 4)) { player.pearls++; toast('+1 ender pearl. Press T to throw.'); }
+    } else if (slot === 'gapple') {
+      if (spend(player.inv, 'emerald', 3)) { player.gapples += 2; toast('+2 golden apples. Press G to use.'); }
+    } else if (slot === 'blockpack') {
+      if (spendMulti(player.inv, { iron: 20, gold: 2 })) { player.blocks += 48; player.fireballs += 1; toast('Bridge pack bought: +48 blocks +1 fireball.'); }
+    } else if (slot === 'u1') {
+      const costs = [4, 8, 12];
+      if (player.sharpness >= 3) toast('Sharpness already maxed.');
+      else if (spend(player.inv, 'diamond', costs[player.sharpness])) { player.sharpness++; toast(`Sharpness ${player.sharpness} unlocked.`); }
+    } else if (slot === 'u2') {
+      const costs = [3, 6, 10];
+      if (player.protection >= 3) toast('Protection already maxed.');
+      else if (spend(player.inv, 'diamond', costs[player.protection])) { player.protection++; toast(`Protection ${player.protection} unlocked.`); }
+    } else if (slot === 'u3') {
+      const costs = [3, 7];
+      if (player.haste >= 2) toast('Haste already maxed.');
+      else if (spend(player.inv, 'diamond', costs[player.haste])) { player.haste++; toast(`Haste ${player.haste} unlocked.`); }
+    } else if (slot === 'u4') {
+      const costs = [2, 5, 9];
+      if (player.forge >= 3) toast('Forge already maxed.');
+      else if (spend(player.inv, 'diamond', costs[player.forge])) { player.forge++; applyForgeUpgrade('red', player.forge); toast(`Forge ${player.forge} unlocked.`); }
+    } else if (slot === 'u5') {
+      if (player.healPool) toast('Heal Pool already active.');
+      else if (spend(player.inv, 'diamond', 1)) { player.healPool = true; toast('Heal Pool active at your base.'); }
+    } else if (slot === 'u6') {
+      if (player.alarmTrap) toast('Alarm Trap already armed.');
+      else if (spend(player.inv, 'diamond', 2)) { player.alarmTrap = true; toast('Alarm Trap armed.'); }
+    }
+  }
+
+  function enemyAutoBuy() {
+    const inv = enemy.inv;
+    // Same economy rules on every difficulty. Harder bots simply spend more sensibly because they reach objectives and react better.
+    if (inv.iron >= 8 && enemy.blocks < 80) { inv.iron -= 8; enemy.blocks += 16; }
+    if (!enemy.bow && inv.gold >= 8 && (enemy.variant === 'archer' || enemy.variant === 'adaptive' || enemy.variant === 'collector')) { inv.gold -= 8; enemy.bow = true; enemy.arrows += 16; }
+    if (enemy.bow && enemy.arrows < 12 && inv.gold >= 3) { inv.gold -= 3; enemy.arrows += 16; }
+    if (enemy.tnt < 2 && inv.gold >= 8 && (enemy.variant === 'trickster' || enemy.variant === 'rusher')) { inv.gold -= 8; enemy.tnt++; }
+    if (enemy.fireballs < 2 && inv.gold >= 6 && (enemy.variant === 'trickster' || enemy.variant === 'defender' || enemy.variant === 'adaptive')) { inv.gold -= 6; enemy.fireballs++; }
+    if (enemy.pickaxe === 0 && inv.gold >= 4) { inv.gold -= 4; enemy.pickaxe = 1; }
+    if (enemy.pickaxe === 1 && inv.gold >= 8 && enemy.goal === 'attackBed') { inv.gold -= 8; enemy.pickaxe = 2; }
+    if (enemy.sword === 0 && inv.iron >= 12) { inv.iron -= 12; enemy.sword = 1; }
+    if (enemy.sword === 1 && inv.gold >= 8) { inv.gold -= 8; enemy.sword = 2; }
+    if (enemy.armor === 0 && inv.gold >= 8) { inv.gold -= 8; enemy.armor = 1; }
+    if (enemy.sharpness < 3) {
+      const cost = [4, 8, 12][enemy.sharpness];
+      if (inv.diamond >= cost) { inv.diamond -= cost; enemy.sharpness++; }
+    } else if (enemy.protection < 3) {
+      const cost = [3, 6, 10][enemy.protection];
+      if (inv.diamond >= cost) { inv.diamond -= cost; enemy.protection++; }
+    } else if (enemy.haste < 2) {
+      const cost = [3, 7][enemy.haste];
+      if (inv.diamond >= cost) { inv.diamond -= cost; enemy.haste++; }
+    } else if (enemy.forge < 2) {
+      const cost = [2, 5, 9][enemy.forge];
+      if (inv.diamond >= cost) { inv.diamond -= cost; enemy.forge++; applyForgeUpgrade('blue', enemy.forge); }
+    }
+    if (!enemy.healPool && inv.diamond >= 1 && enemy.variant === 'defender') { inv.diamond -= 1; enemy.healPool = true; }
+    if (!enemy.alarmTrap && inv.diamond >= 2 && enemy.variant === 'defender') { inv.diamond -= 2; enemy.alarmTrap = true; }
+    if (enemy.sword === 2 && inv.emerald >= 4) { inv.emerald -= 4; enemy.sword = 3; }
+    if (enemy.armor === 1 && inv.emerald >= 4) { inv.emerald -= 4; enemy.armor = 2; }
+    if (enemy.pearls < 1 && inv.emerald >= 4 && (enemy.variant === 'trickster' || enemy.variant === 'rusher')) { inv.emerald -= 4; enemy.pearls++; }
+  }
+
+  function nearestBed(team) { return team === 'red' ? redBed : blueBed; }
+  function enemyBed(team) { return team === 'red' ? blueBed : redBed; }
+
+  function damageEntity(target, amount, sourceTeam) {
+    if (!target.alive || target.invuln > 0) return;
+    const reduction = target.armor * 0.12 + (target.protection || 0) * 0.045;
+    const final = Math.max(1, amount * (1 - reduction));
+    target.hp -= final;
+    target.invuln = 0.32;
+    floatText(`-${Math.round(final)}`, target.x, target.y - 24, sourceTeam === 'red' ? '#ffb6c4' : '#b8d0ff');
+    burst(target.x, target.y, sourceTeam === 'red' ? '#ff5f78' : '#61a8ff', 8);
+    screenShake = Math.max(screenShake, 7);
+    if (target.hp <= 0) killEntity(target, sourceTeam);
+  }
+
+  function killEntity(target, sourceTeam) {
+    target.hp = 0;
+    target.alive = false;
+    target.respawn = 3.6;
+    burst(target.x, target.y, '#ffffff', 22);
+    const bed = nearestBed(target.team);
+    if (!bed.alive) {
+      if (target !== player && sourceTeam === 'red') {
+        player.kills++;
+        player.finalKills++;
+      }
+      if (target === player) endGame(false);
+      else endGame(true);
+      return;
+    }
+    if (target === player) {
+      player.inv = { iron: 0, gold: 0, diamond: 0, emerald: 0 };
+      player.blocks = Math.max(8, Math.floor(player.blocks * 0.35));
+      toast('You died. Respawning because your bed is alive.');
+    } else {
+      player.kills++;
+      enemy.inv = { iron: 0, gold: 0, diamond: 0, emerald: 0 };
+      enemy.blocks = 32;
+      toast('Blue Bot killed. It will respawn while its bed lives.');
+    }
+  }
+
+  function respawnEntity(ent) {
+    ent.alive = true;
+    ent.hp = ent.maxHp;
+    ent.invuln = 1.2;
+    ent.vx = ent.vy = 0;
+    ent.voidTime = 0;
+    ent.ground = 1;
+    resetCombo(ent);
+    ent.bridgeCd = 0;
+    if (ent.team === 'red') { ent.x = 13 * TILE + 16; ent.y = 35 * TILE + 16; }
+    else { ent.x = 62 * TILE + 16; ent.y = 12 * TILE + 16; }
+    if (ent === player) {
+      const now = performance.now();
+      antiCheat.graceUntil = now + 2200;
+      antiCheat.lastLegitTeleport = now;
+      antiCheat.lastX = ent.x;
+      antiCheat.lastY = ent.y;
+      antiCheat.lastT = now;
+    }
+  }
+
+  function burst(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+      particles.push({ x, y, vx: rand(-130, 130), vy: rand(-130, 130), life: rand(0.28, 0.8), max: 0.8, color, size: rand(2, 5) });
+    }
+  }
+
+  function floatText(text, x, y, color = '#ffffff') {
+    floatingTexts.push({ text, x, y, vy: -34, life: 0.8, max: 0.8, color });
+  }
+
+  function nearestWalkableWorld(x, y, radius = 2) {
+    const cx = gx(x), cy = gy(y);
+    let best = null, bestD = Infinity;
+    for (let yy = cy - radius; yy <= cy + radius; yy++) {
+      for (let xx = cx - radius; xx <= cx + radius; xx++) {
+        if (!isWalkableTile(getTile(xx, yy))) continue;
+        const c = centerOf(xx, yy);
+        const d = dist(x, y, c.x, c.y);
+        if (d < bestD) { bestD = d; best = c; }
+      }
+    }
+    return best;
+  }
+
+  function groundCoverage(ent) {
+    // Death checks the character's whole body.
+    // You only die once every sampled part of the character is unsupported.
+    const r = ent.r * 0.82;
+    const pts = [
+      [0, 0], [r, 0], [-r, 0], [0, r], [0, -r],
+      [r * 0.7, r * 0.7], [-r * 0.7, r * 0.7], [r * 0.7, -r * 0.7], [-r * 0.7, -r * 0.7],
+      [r * 1.05, 0], [-r * 1.05, 0], [0, r * 1.05], [0, -r * 1.05]
+    ];
+    let supported = 0;
+    for (const [px, py] of pts) if (isWalkableAt(ent.x + px, ent.y + py)) supported++;
+    return supported / pts.length;
+  }
+
+  function resetCombo(ent) {
+    ent.combo = 0;
+    ent.comboTimer = 0;
+  }
+
+  function registerCombo(ent, clean = true) {
+    const window = 0.78 + (ent.comboWindowBonus || 0);
+    ent.combo = ent.comboTimer > 0 ? Math.min(8, ent.combo + 1) : 1;
+    ent.comboTimer = window;
+    if (!clean) ent.combo = Math.max(1, ent.combo - 1);
+    return ent.combo;
+  }
+
+  function updateInputWorld() {
+    mouse.worldX = mouse.x + camX;
+    mouse.worldY = mouse.y + camY;
+  }
+
+  function moveEntity(ent, dx, dy, dt) {
+    if (!ent.alive) return;
+    const len = Math.hypot(dx, dy);
+    if (len > 0) { dx /= len; dy /= len; }
+    const accel = ent.speed * 6.5;
+    ent.vx += dx * accel * dt;
+    ent.vy += dy * accel * dt;
+    const maxSpeed = ent.speed;
+    ent.dashTime = Math.max(0, (ent.dashTime || 0) - dt);
+    const dashCap = ent.dashTime > 0 ? Math.max(maxSpeed, 2550 + (ent.dashBonus || 0) * 240) : maxSpeed;
+    const vLen = Math.hypot(ent.vx, ent.vy);
+    if (vLen > dashCap) { ent.vx = ent.vx / vLen * dashCap; ent.vy = ent.vy / vLen * dashCap; }
+    ent.vx *= Math.pow(ent.dashTime > 0 ? 0.014 : 0.0008, dt);
+    ent.vy *= Math.pow(ent.dashTime > 0 ? 0.014 : 0.0008, dt);
+    ent.bridgeCd = Math.max(0, (ent.bridgeCd || 0) - dt);
+    ent.clutchCd = Math.max(0, (ent.clutchCd || 0) - dt);
+    ent.x += ent.vx * dt;
+    ent.y += ent.vy * dt;
+    ent.x = clamp(ent.x, 4, WORLD_W - 4);
+    ent.y = clamp(ent.y, 4, WORLD_H - 4);
+
+    const coverage = groundCoverage(ent);
+    ent.ground = coverage;
+    if (coverage < 0.72) {
+      const tx = gx(ent.x), ty = gy(ent.y);
+      if (ent === enemy && ent.blocks > 0 && ent.bridgeCd <= 0 && Math.random() < (ent.profile?.clutchSense ?? 0.5)) {
+        if (canBotPlaceBlock(tx, ty, { ignoreEntities: true })) {
+          setTile(tx, ty, BLUE_BLOCK);
+          ent.blocks--;
+          ent.bridgeCd = ent.profile?.bridgeCd ?? 0.2;
+          ent.voidTime = 0;
+          ent.ground = 1;
+          burst(tx * TILE + 16, ty * TILE + 16, styleFor('blue').block, 3);
+          return;
+        }
+      }
+    }
+    if (coverage <= 0.001) {
+      toast(ent === player ? 'You fully fell into the void.' : `${ent.name || 'Blue Bot'} fell into the void.`);
+      killEntity(ent, ent === player ? 'blue' : 'red');
+    } else {
+      ent.voidTime = Math.max(0, 1 - coverage);
+    }
+  }
+
+  function updatePlayer(dt) {
+    if (!player.alive) {
+      player.respawn -= dt;
+      if (player.respawn <= 0 && redBed.alive && state === 'playing') respawnEntity(player);
+      return;
+    }
+    let dx = 0, dy = 0;
+    if (keys.has('w') || keys.has('arrowup')) dy--;
+    if (keys.has('s') || keys.has('arrowdown')) dy++;
+    if (keys.has('a') || keys.has('arrowleft')) dx--;
+    if (keys.has('d') || keys.has('arrowright')) dx++;
+    moveEntity(player, dx, dy, dt);
+    player.attackCd = Math.max(0, player.attackCd - dt);
+    player.bowCd = Math.max(0, player.bowCd - dt);
+    player.dashCd = Math.max(0, player.dashCd - dt);
+    player.invuln = Math.max(0, player.invuln - dt);
+    player.comboTimer = Math.max(0, player.comboTimer - dt);
+    if (player.comboTimer <= 0) player.combo = 0;
+
+    const nearShop = dist(player.x, player.y, 11 * TILE + 16, 37 * TILE + 16) < 120;
+    if (!nearShop && shopOpen) toggleShop(false);
+    if (enemy?.alarmTrap && blueBed?.alive && pointNearRect(player.x, player.y, blueBed, 135)) {
+      enemy.alarmTrap = false;
+      player.vx *= 0.2; player.vy *= 0.2;
+      player.dashCd = Math.max(player.dashCd, 0.7);
+      floatText('ALARM TRAP', player.x, player.y - 52, '#ffd166');
+      burst(player.x, player.y, '#ffd166', 18);
+      toast('Blue Alarm Trap triggered. You were slowed.');
+    }
+  }
+
+  function playerDash() {
+    if (state !== 'playing' || paused || shopOpen || !player.alive || player.dashCd > 0) return;
+    antiCheat.lastLegitDash = performance.now();
+
+    let dx = 0, dy = 0;
+    if (keys.has('w') || keys.has('arrowup')) dy--;
+    if (keys.has('s') || keys.has('arrowdown')) dy++;
+    if (keys.has('a') || keys.has('arrowleft')) dx--;
+    if (keys.has('d') || keys.has('arrowright')) dx++;
+
+    // If moving, dash exactly with your movement. If standing still, dash toward mouse.
+    if (dx === 0 && dy === 0) {
+      dx = mouse.worldX - player.x;
+      dy = mouse.worldY - player.y;
+    }
+
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len;
+    dy /= len;
+
+    // v5.3.3: real dash impulse. Movement no longer clamps the dash back to walking speed,
+    // and moving in the same direction adds forward momentum instead of cancelling the boost.
+    const currentForward = Math.max(0, player.vx * dx + player.vy * dy);
+    const dashPower = 1320 + (player.dashBonus || 0) * 260;
+    const momentumBonus = Math.min(260, currentForward * 0.45);
+    const finalSpeed = dashPower + momentumBonus;
+    player.vx = dx * finalSpeed;
+    player.vy = dy * finalSpeed;
+    player.dashTime = 0.18 + Math.min(0.07, (player.dashBonus || 0) * 0.014);
+
+    // Invulnerability while dashing.
+    player.invuln = Math.max(player.invuln || 0, 0.34 + Math.min(0.22, (player.dashBonus || 0) * 0.055));
+    player.dashCd = Math.max(0.42, 0.82 - (player.dashBonus || 0) * 0.04);
+    burst(player.x, player.y, '#8be9ff', 30);
+  }
+
+  function playerAttack() {
+    if (state !== 'playing' || paused || shopOpen || !player.alive || player.attackCd > 0) return;
+    antiCheat.lastLegitAttack = performance.now();
+    player.attackCd = Math.max(0.20, 0.30 - (player.attackSpeedBonus || 0));
+    const aim = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
+    const reach = 84;
+    attackSwings.push({ x: player.x, y: player.y, angle: aim, life: 0.16, max: 0.16, team: 'red' });
+
+    const targetGx = gx(mouse.worldX), targetGy = gy(mouse.worldY);
+    const c = centerOf(targetGx, targetGy);
+    const targetTile = getTile(targetGx, targetGy);
+
+    // First priority: actual combat target in front of your aim.
+    if (enemy.alive && dist(player.x, player.y, enemy.x, enemy.y) < reach + enemy.r) {
+      const a2 = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+      const cursorNear = dist(mouse.worldX, mouse.worldY, enemy.x, enemy.y) < 52;
+      const diff = Math.abs(Math.atan2(Math.sin(a2 - aim), Math.cos(a2 - aim)));
+      if (diff < 1.2 || cursorNear) {
+        const perfect = diff < 0.38 || cursorNear;
+        const combo = registerCombo(player, perfect);
+        const comboMult = 1 + Math.min(combo - 1, 6) * 0.055 * (player.comboPower || 1);
+        damageEntity(enemy, (5 + player.sword * 2.2 + (player.sharpness || 0) * 1.25) * (perfect ? 1.16 : 1) * comboMult, 'red');
+        enemy.vx += Math.cos(a2) * ((perfect ? 205 : 150) + combo * 10);
+        enemy.vy += Math.sin(a2) * ((perfect ? 205 : 150) + combo * 10);
+        if (perfect) floatText(combo > 1 ? `${combo}x combo` : 'clean hit', enemy.x, enemy.y - 44, '#8be9ff');
+        return;
+      }
+    }
+
+    // Second priority: bed damage. You only need to be near and aim roughly at it now.
+    if (blueBed.alive && pointNearRect(player.x, player.y, blueBed, 96)) {
+      const bx = blueBed.x + blueBed.w / 2, by = blueBed.y + blueBed.h / 2;
+      const bedAngle = Math.atan2(by - player.y, bx - player.x);
+      const diff = Math.abs(Math.atan2(Math.sin(bedAngle - aim), Math.cos(bedAngle - aim)));
+      if (diff < 1.35 || pointNearRect(mouse.worldX, mouse.worldY, blueBed, 46)) {
+        const dmg = 1.8 + player.pickaxe * 1.45 + (player.haste || 0) * 0.75 + (player.bedDamageBonus || 0);
+        blueBed.hp -= dmg;
+        floatText(`bed -${dmg.toFixed(1)}`, bx, by - 18, '#b8d0ff');
+        burst(bx, by, '#61a8ff', 10);
+        if (blueBed.hp <= 0) breakBed(blueBed, 'red');
+        return;
+      }
+    }
+
+    // Third priority: breaking blocks with the crosshair.
+    if (dist(player.x, player.y, c.x, c.y) < reach + 20 && (targetTile === BLUE_BLOCK || targetTile === STONE || targetTile === RED_BLOCK)) {
+      const hitPower = 1 + player.pickaxe;
+      if (targetTile !== STONE || Math.random() < hitPower / 5) {
+        setTile(targetGx, targetGy, VOID);
+        burst(c.x, c.y, targetTile === BLUE_BLOCK ? '#61a8ff' : targetTile === RED_BLOCK ? '#ff5f78' : '#b9becf', 8);
+      } else {
+        floatText('too weak', c.x, c.y - 8, '#ffd166');
+      }
+      return;
+    }
+
+    resetCombo(player);
+    floatText('miss', player.x + Math.cos(aim) * 48, player.y + Math.sin(aim) * 48, '#aab3cf');
+  }
+
+  function pointNearRect(x, y, r, pad) {
+    return x >= r.x - pad && x <= r.x + r.w + pad && y >= r.y - pad && y <= r.y + r.h + pad;
+  }
+
+  // v5.3.3: one shared safety check for bot wool placement.
+  // The bot may bridge/clutch/defend, but it must not place wool on top of beds,
+  // generators, the shop, players, or other non-map gameplay objects.
+  function protectedObjectAtTile(tx, ty, opts = {}) {
+    if (!inBounds(tx, ty)) return true;
+    const c = centerOf(tx, ty);
+
+    for (const bed of [redBed, blueBed]) {
+      if (bed && pointNearRect(c.x, c.y, bed, 6)) return true;
+    }
+
+    if (Array.isArray(generators)) {
+      for (const g of generators) {
+        if (g && dist(c.x, c.y, g.x, g.y) < 30) return true;
+      }
+    }
+
+    // Red base shop block. Kept explicit because it is drawn separately from the tile map.
+    if (dist(c.x, c.y, 11 * TILE + 16, 37 * TILE + 16) < 34) return true;
+
+    if (!opts.ignoreEntities) {
+      if (player && player.alive && dist(c.x, c.y, player.x, player.y) < (player.r || 16) + 20) return true;
+      if (enemy && enemy.alive && dist(c.x, c.y, enemy.x, enemy.y) < (enemy.r || 16) + 18) return true;
+    }
+
+    return false;
+  }
+
+  function canBotPlaceBlock(tx, ty, opts = {}) {
+    if (!inBounds(tx, ty)) return false;
+    if (getTile(tx, ty) !== VOID) return false;
+    if (protectedObjectAtTile(tx, ty, opts)) return false;
+    return [[1,0],[-1,0],[0,1],[0,-1]].some(([ax, ay]) => isWalkableTile(getTile(tx + ax, ty + ay)));
+  }
+
+  function breakBed(bed, breakerTeam) {
+    if (!bed.alive) return;
+    bed.alive = false;
+    screenShake = 18;
+    if (bed.team === 'blue') {
+      player.bedBreaks++;
+      if (!enemy.alive) {
+        respawnEntity(enemy);
+        enemy.finalLife = true;
+        enemy.invuln = 1.7;
+        toast('Blue bed destroyed. Bot respawned on its final life.');
+      } else toast('Blue bed destroyed. Final-kill the bot.');
+    } else {
+      if (!player.alive) {
+        respawnEntity(player);
+        player.finalLife = true;
+        player.invuln = 1.7;
+        toast('Your bed was destroyed. You respawned on your final life.');
+      } else toast('Your bed was destroyed. Do not die now.');
+    }
+  }
+
+  function placeBlock() {
+    if (state !== 'playing' || paused || shopOpen || !player.alive) return;
+    let tx = gx(mouse.worldX), ty = gy(mouse.worldY);
+    let c = centerOf(tx, ty);
+    let clutch = false;
+    if (player.blocks <= 0) { toast('No blocks. Buy wool at the shop.'); return; }
+
+    // If you slip off a bridge, right click quickly to clutch a block under your feet.
+    const feetX = gx(player.x), feetY = gy(player.y);
+    if (!isWalkableAt(player.x, player.y) && getTile(feetX, feetY) === VOID && player.clutchCd <= 0) {
+      const adjFeet = [[1,0],[-1,0],[0,1],[0,-1]].some(([ax, ay]) => isWalkableTile(getTile(feetX + ax, feetY + ay)));
+      if (adjFeet) { tx = feetX; ty = feetY; c = centerOf(tx, ty); clutch = true; }
+    }
+
+    const placeReach = (clutch ? 95 : 190) + (player.placeReachBonus || 0);
+    if (dist(player.x, player.y, c.x, c.y) > placeReach) { toast('Too far to place.'); return; }
+    if (getTile(tx, ty) !== VOID) return;
+    if (pointNearRect(c.x, c.y, redBed, 4) || pointNearRect(c.x, c.y, blueBed, 4)) return;
+    const adj = [[1,0],[-1,0],[0,1],[0,-1]].some(([ax, ay]) => isWalkableTile(getTile(tx + ax, ty + ay)));
+    if (!adj) { toast('Blocks must touch land or another block.'); return; }
+    antiCheat.lastLegitPlace = performance.now();
+    setTile(tx, ty, RED_BLOCK);
+    player.blocks--;
+    player.clutchCd = clutch ? 0.18 : 0;
+    if (clutch) { player.voidTime = 0; floatText('clutch', player.x, player.y - 30, '#8be9ff'); }
+    burst(c.x, c.y, '#ff5f78', 4);
+  }
+
+  function shootArrow(shooter, targetX, targetY, force = false) {
+    if (!shooter.alive || (!force && shooter.bowCd > 0) || !shooter.bow || shooter.arrows <= 0) return;
+    if (shooter === player && !force) antiCheat.lastLegitProjectile = performance.now();
+    shooter.arrows--;
+    shooter.bowCd = force ? 0 : Math.max(0.32, 0.55 - (shooter.bowSpeedBonus || 0));
+    const angle = Math.atan2(targetY - shooter.y, targetX - shooter.x);
+    projectiles.push({
+      x: shooter.x + Math.cos(angle) * 22,
+      y: shooter.y + Math.sin(angle) * 22,
+      vx: Math.cos(angle) * 620,
+      vy: Math.sin(angle) * 620,
+      team: shooter.team,
+      kind: 'arrow',
+      life: 1.45,
+      damage: 5.5 + shooter.sword * 0.8
+    });
+  }
+
+  function consumeGapple(ent) {
+    if (!ent.alive || ent.gapples <= 0) { if (ent === player) toast('No golden apples.'); return; }
+    ent.gapples--;
+    ent.hp = Math.min(ent.maxHp, ent.hp + 12);
+    ent.invuln = Math.max(ent.invuln, 0.8);
+    floatText('gapple', ent.x, ent.y - 38, '#ffd166');
+  }
+
+  function throwUtility(shooter, targetX, targetY, kind) {
+    if (!shooter.alive) return;
+    if (shooter === player) antiCheat.lastLegitProjectile = performance.now();
+    if (kind === 'fireball' && shooter.fireballs <= 0) { if (shooter === player) toast('No fireballs.'); return; }
+    if (kind === 'tnt' && shooter.tnt <= 0) { if (shooter === player) toast('No TNT.'); return; }
+    if (kind === 'pearl' && shooter.pearls <= 0) { if (shooter === player) toast('No ender pearls.'); return; }
+    if (kind === 'fireball') shooter.fireballs--;
+    if (kind === 'tnt') shooter.tnt--;
+    if (kind === 'pearl') shooter.pearls--;
+    const angle = Math.atan2(targetY - shooter.y, targetX - shooter.x);
+    const speed = kind === 'pearl' ? 760 : kind === 'tnt' ? 420 : 540;
+    projectiles.push({
+      x: shooter.x + Math.cos(angle) * 24,
+      y: shooter.y + Math.sin(angle) * 24,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      team: shooter.team,
+      kind,
+      life: kind === 'pearl' ? 0.72 : kind === 'tnt' ? 0.95 : 1.05,
+      damage: kind === 'fireball' ? 8 : kind === 'tnt' ? 10 : 0,
+      owner: shooter
+    });
+  }
+
+  function explode(x, y, team, radius, damage, breakPower = 1) {
+    burst(x, y, team === 'red' ? styleFor('red').soft : styleFor('blue').soft, 28);
+    screenShake = Math.max(screenShake, radius / 7);
+    const minX = gx(x - radius), maxX = gx(x + radius);
+    const minY = gy(y - radius), maxY = gy(y + radius);
+    for (let yy = minY; yy <= maxY; yy++) for (let xx = minX; xx <= maxX; xx++) {
+      const c = centerOf(xx, yy);
+      if (dist(x, y, c.x, c.y) > radius) continue;
+      const tile = getTile(xx, yy);
+      if ((tile === RED_BLOCK || tile === BLUE_BLOCK || (tile === STONE && breakPower >= 2)) && Math.random() < (tile === STONE ? 0.35 : 0.85)) setTile(xx, yy, VOID);
+    }
+    if (team === 'red' && enemy.alive && dist(x, y, enemy.x, enemy.y) < radius + enemy.r) damageEntity(enemy, damage, 'red');
+    if (team === 'blue' && player.alive && dist(x, y, player.x, player.y) < radius + player.r) damageEntity(player, damage, 'blue');
+    const targetBed = team === 'red' ? blueBed : redBed;
+    if (targetBed.alive && pointNearRect(x, y, targetBed, radius)) {
+      targetBed.hp -= damage * 0.45;
+      if (targetBed.hp <= 0) breakBed(targetBed, team);
+    }
+  }
+
+  function nearestGeneratorOf(types, fromX, fromY, preferEnemySide = false) {
+    let best = null, bestD = Infinity;
+    for (const g of generators) {
+      if (!types.includes(g.type)) continue;
+      if (preferEnemySide && g.team === 'red') continue;
+      const d = dist(fromX, fromY, g.x, g.y);
+      if (d < bestD) { bestD = d; best = g; }
+    }
+    return best;
+  }
+
+  function botBasePoint() { return { x: 62 * TILE + 16, y: 12 * TILE + 16 }; }
+  function playerBasePoint() { return { x: 13 * TILE + 16, y: 35 * TILE + 16 }; }
+
+  function chooseEnemyGoal(p, dPlayer, playerAtBlueBase) {
+    const lowHp = enemy.hp < enemy.maxHp * (0.34 + p.panic * 0.12);
+    const hasBedTools = enemy.pickaxe >= 1 || enemy.tnt > 0 || enemy.fireballs > 0;
+    const wantsDiamonds = blueBed.alive && enemy.inv.diamond < 4 && (enemy.sharpness + enemy.protection + enemy.haste < 3);
+    const wantsEmeralds = gameTime > 45 && enemy.inv.emerald < 4 && enemy.sword < 3 && enemy.armor < 2;
+
+    if (playerAtBlueBase && blueBed.alive && (enemy.variant === 'defender' || p.objectiveSense > 0.55)) return 'defend';
+    if (dPlayer < p.detect && (!redBed.alive || enemy.variant === 'rusher' || p.comboSense > 0.65)) return 'fight';
+    if (lowHp && blueBed.alive) return 'retreat';
+    if (enemy.variant === 'collector' && wantsDiamonds) return 'diamonds';
+    if (enemy.variant === 'collector' && wantsEmeralds) return 'emeralds';
+    if (enemy.variant === 'archer' && enemy.bow && player.alive && dPlayer < 540) return 'bowPressure';
+    if (redBed.alive && (hasBedTools || gameTime > 35 || enemy.variant === 'rusher')) return 'attackBed';
+    if (wantsDiamonds && p.objectiveSense > 0.45) return 'diamonds';
+    if (wantsEmeralds && p.objectiveSense > 0.58) return 'emeralds';
+    return redBed.alive ? 'attackBed' : 'fight';
+  }
+
+  function updateEnemy(dt) {
+    if (!enemy.alive) {
+      enemy.respawn -= dt;
+      if (enemy.respawn <= 0 && blueBed.alive && state === 'playing') respawnEntity(enemy);
+      return;
+    }
+    const p = enemy.profile || currentBotProfile();
+    enemy.attackCd = Math.max(0, enemy.attackCd - dt);
+    enemy.bowCd = Math.max(0, enemy.bowCd - dt);
+    enemy.dashCd = Math.max(0, enemy.dashCd - dt);
+    enemy.invuln = Math.max(0, enemy.invuln - dt);
+    enemy.comboTimer = Math.max(0, enemy.comboTimer - dt);
+    if (enemy.comboTimer <= 0) enemy.combo = 0;
+    enemy.strafeTimer -= dt;
+    if (enemy.strafeTimer <= 0) { enemy.strafe *= -1; enemy.strafeTimer = rand(0.45, 1.35); }
+    enemyThink -= dt;
+    if (enemyThink <= 0) { enemyAutoBuy(); enemyThink = p.think; }
+
+    const dPlayer = player.alive ? dist(enemy.x, enemy.y, player.x, player.y) : 9999;
+    const playerAtBlueBase = player.alive && dist(player.x, player.y, blueBed.x + blueBed.w / 2, blueBed.y + blueBed.h / 2) < 410;
+    enemy.memory.goalSwitch -= dt;
+    if (enemy.memory.goalSwitch <= 0) {
+      enemy.goal = chooseEnemyGoal(p, dPlayer, playerAtBlueBase);
+      enemy.memory.goalSwitch = Math.max(0.24, p.think + p.reaction + rand(0, 0.22));
+    }
+
+    let targetX = player.x, targetY = player.y;
+    const redBedCx = redBed.x + redBed.w / 2, redBedCy = redBed.y + redBed.h / 2;
+    const blueBedCx = blueBed.x + blueBed.w / 2, blueBedCy = blueBed.y + blueBed.h / 2;
+
+    if (enemy.goal === 'defend') {
+      targetX = player.x; targetY = player.y;
+      // Build light bed defense if it has blocks and sees pressure.
+      if (enemy.blocks > 8 && blueBed.alive && Math.random() < dt * (0.8 * p.objectiveSense)) {
+        const around = [[-2,0],[-1,-1],[0,-1],[1,-1],[2,0],[1,1],[0,1],[-1,1]];
+        const [ox, oy] = choice(around);
+        const tx = gx(blueBedCx) + ox, ty = gy(blueBedCy) + oy;
+        if (canBotPlaceBlock(tx, ty, { ignoreEntities: true })) {
+          setTile(tx, ty, BLUE_BLOCK); enemy.blocks--; burst(tx * TILE + 16, ty * TILE + 16, '#61a8ff', 3);
+        }
+      }
+    } else if (enemy.goal === 'retreat') {
+      const b = botBasePoint(); targetX = b.x; targetY = b.y;
+    } else if (enemy.goal === 'diamonds') {
+      const g = nearestGeneratorOf(['diamond'], enemy.x, enemy.y, true);
+      if (g) { targetX = g.x; targetY = g.y; }
+    } else if (enemy.goal === 'emeralds') {
+      const g = nearestGeneratorOf(['emerald'], enemy.x, enemy.y);
+      if (g) { targetX = g.x; targetY = g.y; }
+    } else if (enemy.goal === 'bowPressure') {
+      const angleAway = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+      const desired = 310;
+      targetX = player.x + Math.cos(angleAway) * desired;
+      targetY = player.y + Math.sin(angleAway) * desired;
+    } else if (enemy.goal === 'attackBed') {
+      targetX = redBedCx; targetY = redBedCy;
+    } else {
+      targetX = player.x; targetY = player.y;
+    }
+
+    // Rookie bots visibly wobble and sometimes choose bad lines; high skill bots track goals cleanly.
+    const wobble = p.aimError * 70;
+    targetX += Math.sin(gameTime * 1.7 + enemy.x * 0.01) * wobble;
+    targetY += Math.cos(gameTime * 1.3 + enemy.y * 0.01) * wobble;
+
+    // Bow aiming: equal bow gear, different accuracy and prediction.
+    if (player.alive && enemy.bow && enemy.arrows > 0 && dPlayer > 125 && dPlayer < 560 && enemy.bowCd <= 0) {
+      const lead = p.bowLead * dPlayer / 620;
+      const miss = p.aimError * 145;
+      shootArrow(enemy, player.x + player.vx * lead + rand(-miss, miss), player.y + player.vy * lead + rand(-miss, miss));
+    }
+    if (player.alive && enemy.tnt > 0 && dPlayer < 320 && dPlayer > 85 && (enemy.variant === 'trickster' || enemy.goal === 'attackBed') && Math.random() < dt * (0.08 + p.objectiveSense * 0.12)) {
+      throwUtility(enemy, player.x + player.vx * 0.18, player.y + player.vy * 0.18, 'tnt');
+    }
+    if (player.alive && enemy.fireballs > 0 && dPlayer < 560 && Math.random() < dt * (0.06 + p.objectiveSense * 0.10)) {
+      throwUtility(enemy, player.x + player.vx * 0.18, player.y + player.vy * 0.18, 'fireball');
+    }
+    if (player.alive && enemy.pearls > 0 && redBed.alive && enemy.goal === 'attackBed' && dist(enemy.x, enemy.y, redBedCx, redBedCy) < 430 && Math.random() < dt * p.objectiveSense * 0.16) {
+      throwUtility(enemy, redBedCx, redBedCy, 'pearl');
+    }
+
+    const angle = Math.atan2(targetY - enemy.y, targetX - enemy.x);
+    const lookDist = 34 + p.objectiveSense * 18;
+    const lookX = enemy.x + Math.cos(angle) * lookDist;
+    const lookY = enemy.y + Math.sin(angle) * lookDist;
+    const tx = gx(lookX), ty = gy(lookY);
+    const frontTile = getTile(tx, ty);
+    if (frontTile === VOID && enemy.blocks > 0 && enemy.bridgeCd <= 0) {
+      if (canBotPlaceBlock(tx, ty, { ignoreEntities: true })) { setTile(tx, ty, BLUE_BLOCK); enemy.blocks--; enemy.bridgeCd = p.bridgeCd; burst(tx * TILE + 16, ty * TILE + 16, '#61a8ff', 3); }
+    }
+    if ((frontTile === RED_BLOCK || frontTile === STONE) && dist(enemy.x, enemy.y, tx * TILE + 16, ty * TILE + 16) < 62) {
+      enemy.breakTimer += dt;
+      if (enemy.breakTimer > p.breakNeed / (1 + (enemy.haste || 0) * 0.25 + enemy.pickaxe * 0.18)) { setTile(tx, ty, VOID); enemy.breakTimer = 0; burst(tx * TILE + 16, ty * TILE + 16, '#ff5f78', 8); }
+    } else enemy.breakTimer = Math.max(0, enemy.breakTimer - dt * 2);
+
+    if (player.alarmTrap && redBed.alive && pointNearRect(enemy.x, enemy.y, redBed, 135)) {
+      player.alarmTrap = false;
+      enemy.vx *= 0.2; enemy.vy *= 0.2;
+      enemy.attackCd = Math.max(enemy.attackCd, 0.9);
+      floatText('ALARM TRAP', enemy.x, enemy.y - 52, '#ffd166');
+      burst(enemy.x, enemy.y, '#ffd166', 18);
+      toast('Alarm Trap triggered. Bot slowed near your bed.');
+    }
+
+    if (redBed.alive && pointNearRect(enemy.x, enemy.y, redBed, 75)) {
+      redBed.hp -= dt * (2.0 + enemy.pickaxe + (enemy.haste || 0) * 0.75);
+      if (Math.random() < dt * 5) burst(redBed.x + redBed.w / 2, redBed.y + redBed.h / 2, '#ff5f78', 4);
+      if (redBed.hp <= 0) breakBed(redBed, 'blue');
+    }
+
+    if (player.alive && dPlayer < 64 && enemy.attackCd <= 0) {
+      enemy.attackCd = 0.50;
+      const clean = Math.random() < (0.42 + p.comboSense * 0.52);
+      const eCombo = registerCombo(enemy, clean);
+      damageEntity(player, (4.3 + enemy.sword * 2.1 + (enemy.sharpness || 0) * 1.25) * (1 + Math.min(eCombo - 1, 5) * 0.035), 'blue');
+      const a = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+      player.vx += Math.cos(a) * (135 + eCombo * 11);
+      player.vy += Math.sin(a) * (135 + eCombo * 11);
+      if (eCombo >= 3 && p.comboSense > 0.7) floatText(`${eCombo}x bot combo`, player.x, player.y - 44, '#b8d0ff');
+      attackSwings.push({ x: enemy.x, y: enemy.y, angle: a, life: 0.16, max: 0.16, team: 'blue' });
+    }
+
+    // Movement. Same speed for all bots; difficulty changes line choice and strafing quality.
+    let dx = targetX - enemy.x, dy = targetY - enemy.y;
+    if (player.alive && dPlayer < 190 && p.strafeSense > 0.35) {
+      const a = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+      const ideal = enemy.bow && dPlayer < 150 ? -120 : 95;
+      dx += Math.cos(a + Math.PI / 2) * enemy.strafe * ideal * p.strafeSense;
+      dy += Math.sin(a + Math.PI / 2) * enemy.strafe * ideal * p.strafeSense;
+    }
+    if (frontTile === RED_BLOCK || frontTile === STONE) { dx *= 0.15; dy *= 0.15; }
+    moveEntity(enemy, dx, dy, dt);
+
+    // Stuck detection: better bots fix bad paths by sidestepping/bridging; rookies flail a bit.
+    const moved = dist(enemy.x, enemy.y, enemy.memory.lastX, enemy.memory.lastY);
+    enemy.memory.stuck = moved < 4 ? enemy.memory.stuck + dt : Math.max(0, enemy.memory.stuck - dt * 2);
+    enemy.memory.lastX = enemy.x; enemy.memory.lastY = enemy.y;
+    if (enemy.memory.stuck > 0.9 && enemy.blocks > 0 && Math.random() < p.objectiveSense) {
+      const side = choice([[1,0],[-1,0],[0,1],[0,-1]]);
+      const sx = gx(enemy.x) + side[0], sy = gy(enemy.y) + side[1];
+      if (canBotPlaceBlock(sx, sy, { ignoreEntities: true })) { setTile(sx, sy, BLUE_BLOCK); enemy.blocks--; enemy.memory.stuck = 0; }
+    }
+  }
+
+  function updateGenerators(dt) {
+    for (const g of generators) {
+      g.timer += dt;
+      const existing = resources.filter(r => r.gen === g).length;
+      if (g.timer >= g.rate && existing < g.max) {
+        g.timer = 0;
+        resources.push({ x: g.x + rand(-18, 18), y: g.y + rand(-18, 18), type: g.type, gen: g, bob: rand(0, 6.28) });
+      }
+    }
+    for (let i = resources.length - 1; i >= 0; i--) {
+      const r = resources[i];
+      r.bob += dt * 4;
+      if (player.alive && dist(player.x, player.y, r.x, r.y) < 34) {
+        player.inv[r.type] = (player.inv[r.type] || 0) + (player.minerBonus && Math.random() < 0.28 ? 2 : 1);
+        resources.splice(i, 1);
+      } else if (enemy.alive && dist(enemy.x, enemy.y, r.x, r.y) < 34) {
+        enemy.inv[r.type] = (enemy.inv[r.type] || 0) + 1;
+        resources.splice(i, 1);
+      }
+    }
+
+    if (player.alive && player.healPool && dist(player.x, player.y, 13 * TILE + 16, 35 * TILE + 16) < 230) {
+      player.hp = Math.min(player.maxHp, player.hp + dt * 1.8);
+    }
+    if (enemy.alive && enemy.healPool && dist(enemy.x, enemy.y, 62 * TILE + 16, 12 * TILE + 16) < 230) {
+      enemy.hp = Math.min(enemy.maxHp, enemy.hp + dt * 1.8);
+    }
+  }
+
+  function updateProjectiles(dt) {
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const p = projectiles[i];
+      const prevX = p.x, prevY = p.y;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+
+      const tx = gx(p.x), ty = gy(p.y);
+      const tile = getTile(tx, ty);
+      const isBlock = tile === RED_BLOCK || tile === BLUE_BLOCK || tile === STONE;
+      const arrowBypass = !!(window.AetherBedsModAPI?.flags?.arrowBypass && p.kind === 'arrow' && (tile === RED_BLOCK || tile === BLUE_BLOCK));
+      const hitTile = isBlock && !arrowBypass;
+
+      // Pearls hitting grey/solid blocks now fairly teleport to the closest safe tile near impact,
+      // instead of feeling like they did nothing.
+      if (p.kind === 'pearl') {
+        if (p.life <= 0 || hitTile) {
+          if (p.owner && p.owner.alive) {
+            let safe = nearestWalkableWorld(p.x, p.y, 3) || nearestWalkableWorld(prevX, prevY, 3);
+            if (!safe && hitTile) safe = centerOf(gx(prevX), gy(prevY));
+            if (safe) {
+              p.owner.x = safe.x;
+              p.owner.y = safe.y;
+              p.owner.vx = p.owner.vy = 0;
+              p.owner.invuln = Math.max(p.owner.invuln || 0, 0.5);
+              burst(safe.x, safe.y, '#d7b7ff', 18);
+            }
+          }
+          projectiles.splice(i, 1);
+        }
+        continue;
+      }
+
+      // Fireballs/TNT now detonate on grey stone properly. Fireballs crack one stone tile;
+      // TNT still has stronger stone-breaking power. This keeps grey blocks useful but not bugged.
+      if ((p.kind === 'fireball' || p.kind === 'tnt') && (p.life <= 0 || hitTile)) {
+        if (tile === STONE && p.kind === 'fireball' && Math.random() < 0.65) setTile(tx, ty, VOID);
+        explode(p.x, p.y, p.team, p.kind === 'tnt' ? 96 : 82, p.damage, p.kind === 'tnt' ? 2 : 1);
+        projectiles.splice(i, 1);
+        continue;
+      }
+
+      if (p.life <= 0 || hitTile) { projectiles.splice(i, 1); continue; }
+
+      if (p.team === 'red' && enemy.alive && dist(p.x, p.y, enemy.x, enemy.y) < enemy.r + 7) {
+        if (p.kind === 'fireball') explode(p.x, p.y, p.team, 82, p.damage, 1); else damageEntity(enemy, p.damage, 'red');
+        projectiles.splice(i, 1);
+      } else if (p.team === 'blue' && player.alive && dist(p.x, p.y, player.x, player.y) < player.r + 7) {
+        if (p.kind === 'fireball') explode(p.x, p.y, p.team, 82, p.damage, 1); else damageEntity(player, p.damage, 'blue');
+        projectiles.splice(i, 1);
+      }
+    }
+  }
+
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= Math.pow(0.04, dt);
+      p.vy *= Math.pow(0.04, dt);
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = attackSwings.length - 1; i >= 0; i--) {
+      attackSwings[i].life -= dt;
+      if (attackSwings[i].life <= 0) attackSwings.splice(i, 1);
+    }
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      const f = floatingTexts[i];
+      f.y += f.vy * dt;
+      f.life -= dt;
+      if (f.life <= 0) floatingTexts.splice(i, 1);
+    }
+  }
+
+  function updateMessages(dt) {
+    let dirty = false;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      messages[i].life -= dt;
+      if (messages[i].life <= 0) { messages.splice(i, 1); dirty = true; }
+    }
+    if (dirty) renderToasts();
+  }
+
+  function toggleShop(force) {
+    if (state !== 'playing') return;
+    const nearShop = player.alive && dist(player.x, player.y, 11 * TILE + 16, 37 * TILE + 16) < 120;
+    if (!nearShop && force !== false) { toast('Shop is at your red base.'); return; }
+    shopOpen = typeof force === 'boolean' ? force : !shopOpen;
+    shopEl.style.display = shopOpen ? 'grid' : 'none';
+  }
+
+  function antiCheatFlag(reason, lethal = true) {
+    if (!antiCheat.enabled) return false;
+    antiCheat.strikes++;
+    toast(`AntiCheat: ${reason}`);
+    if (lethal && player?.alive) killEntity(player, 'blue');
+    return true;
+  }
+
+  function antiCheatBypassActive() {
+    return !!window.AetherBedsModAPI?.flags?.antiCheatBypass;
+  }
+
+  function syncAntiCheatPosition(graceMs = 700) {
+    const now = performance.now();
+    antiCheat.graceUntil = Math.max(antiCheat.graceUntil || 0, now + graceMs);
+    antiCheat.lastLegitTeleport = now;
+    antiCheat.lastX = player?.x || 0;
+    antiCheat.lastY = player?.y || 0;
+    antiCheat.lastT = now;
+    antiCheat.lastItems = antiCheatItemSnapshot();
+  }
+
+  function markSuspiciousAction(action, detail = '') {
+    if (!antiCheat.enabled || state !== 'playing') return false;
+    const bypassedActions = new Set(['teleport', 'respawn', 'direct respawn']);
+    if (antiCheatBypassActive() && bypassedActions.has(action)) {
+      syncAntiCheatPosition(900);
+      return false;
+    }
+    const now = performance.now();
+    antiCheat.suspicious.push({ action, detail, t: now });
+    antiCheat.suspicious = antiCheat.suspicious.filter(e => now - e.t < 5000);
+    return antiCheatFlag(`blocked suspicious ${action}${detail ? ': ' + detail : ''}`);
+  }
+
+  function antiCheatItemSnapshot() {
+    if (!player) return null;
+    return { blocks: player.blocks || 0, arrows: player.arrows || 0, fireballs: player.fireballs || 0, tnt: player.tnt || 0, pearls: player.pearls || 0, gapples: player.gapples || 0 };
+  }
+
+  function updateAntiCheat(dt) {
+    if (!antiCheat.enabled || !player || state !== 'playing') return;
+    const now = performance.now();
+    if (!antiCheat.lastT || now < antiCheat.graceUntil || !player.alive || player.respawn > 0) {
+      antiCheat.lastX = player.x; antiCheat.lastY = player.y; antiCheat.lastT = now; antiCheat.lastItems = antiCheatItemSnapshot(); return;
+    }
+    const elapsed = Math.max(0.016, (now - antiCheat.lastT) / 1000);
+    const moved = dist(player.x, player.y, antiCheat.lastX, antiCheat.lastY);
+    const speedBootBonus = player.speedBoots ? 28 : 0;
+    const assassinBonus = player.kit === 'Assassin' ? 18 : 0;
+    const legitBaseSpeed = 225 + speedBootBonus + assassinBonus;
+    const legitSpeedStat = Math.max(legitBaseSpeed, 238); // Speed Lines battlepass reward caps at 238.
+    if ((player.speed || 225) > legitSpeedStat + 8) antiCheatFlag('speed check failed: invalid speed stat');
+    const normalCap = legitSpeedStat * 1.45 + 85;
+    const dashCap = 2920 + (player.dashBonus || 0) * 320;
+    const bypassActive = antiCheatBypassActive();
+    const speedLimit = player.dashTime > 0 || now - antiCheat.lastLegitDash < 350 ? dashCap : normalCap;
+    if (!bypassActive && moved / elapsed > speedLimit) antiCheatFlag('speed check failed: movement too fast');
+    if (!bypassActive && moved > 460 && now - antiCheat.lastLegitTeleport > 1400 && now - antiCheat.lastLegitDash > 450) antiCheatFlag('teleport check failed');
+
+    const items = antiCheatItemSnapshot();
+    if (Object.values(items).some(v => v < 0 || !Number.isFinite(v))) antiCheatFlag('item check failed');
+    if (antiCheat.lastItems) {
+      if (items.blocks - antiCheat.lastItems.blocks > 80) antiCheatFlag('item check failed: block spike');
+      if (items.arrows - antiCheat.lastItems.arrows > 48) antiCheatFlag('item check failed: arrow spike');
+      if (items.fireballs - antiCheat.lastItems.fireballs > 3 || items.tnt - antiCheat.lastItems.tnt > 3 || items.pearls - antiCheat.lastItems.pearls > 2) antiCheatFlag('item check failed: utility spike');
+    }
+
+    if (!bypassActive && ((player.attackCd <= 0 && now - antiCheat.lastLegitAttack < 90) || (player.dashCd <= 0 && now - antiCheat.lastLegitDash < 260) || (player.bowCd <= 0 && now - antiCheat.lastLegitProjectile < 180))) antiCheatFlag('cooldown check failed');
+    const coverage = groundCoverage(player);
+    if (!bypassActive && player.alive && coverage <= 0.001 && !isWalkableAt(player.x, player.y) && (player.voidTime || 0) > 0.18 && player.invuln < 0.15) antiCheatFlag('void check failed');
+    antiCheat.wins = antiCheat.wins.filter(t => now - t < 120000);
+    if (antiCheat.wins.length > 7) antiCheatFlag('win cap reached');
+    if (antiCheat.suspicious.filter(e => now - e.t < 5000).length >= 3) antiCheatFlag('suspicious behaviour burst');
+    antiCheat.lastX = player.x; antiCheat.lastY = player.y; antiCheat.lastT = now; antiCheat.lastItems = items;
+  }
+
+  function update(dt) {
+    if (state !== 'playing' || paused) return;
+    gameTime += dt;
+    updateInputWorld();
+    updatePlayer(dt);
+    updateEnemy(dt);
+    updateGenerators(dt);
+    updateProjectiles(dt);
+    updateParticles(dt);
+    updateMessages(dt);
+    updateAntiCheat(dt);
+    screenShake = Math.max(0, screenShake - dt * 32);
+  }
+
+  function drawTile(t, x, y) {
+    if (t === VOID) return;
+    if (t === GRASS) {
+      ctx.fillStyle = '#1f8f63';
+      ctx.fillRect(x, y, TILE, TILE);
+      ctx.fillStyle = 'rgba(255,255,255,0.035)';
+      ctx.fillRect(x + 2, y + 2, TILE - 4, 3);
+    } else if (t === MID) {
+      ctx.fillStyle = '#9a7b42';
+      ctx.fillRect(x, y, TILE, TILE);
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(x, y, TILE, TILE / 3);
+    } else if (t === STONE) {
+      ctx.fillStyle = '#59606f';
+      ctx.fillRect(x, y, TILE, TILE);
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+    } else if (t === RED_BLOCK || t === BLUE_BLOCK) {
+      ctx.fillStyle = t === RED_BLOCK ? styleFor('red').block : styleFor('blue').block;
+      ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(x + 4, y + 4, TILE - 8, 4);
+      ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+      ctx.strokeRect(x + 1.5, y + 1.5, TILE - 3, TILE - 3);
+    }
+  }
+
+  function drawBed(bed) {
+    const x = bed.x, y = bed.y;
+    ctx.save();
+    ctx.globalAlpha = bed.alive ? 1 : 0.28;
+    ctx.fillStyle = styleFor(bed.team).bed;
+    roundRect(x, y, bed.w, bed.h, 8, true, false);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    roundRect(x + 7, y + 5, 18, bed.h - 10, 5, true, false);
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 2;
+    roundRect(x, y, bed.w, bed.h, 8, false, true);
+    if (bed.alive) {
+      drawBar(x, y - 10, bed.w, 5, bed.hp / bed.maxHp, styleFor(bed.team).player);
+    }
+    ctx.restore();
+  }
+
+  function drawEntity(ent) {
+    if (!ent.alive) return;
+    const color = styleFor(ent.team).player;
+    ctx.save();
+    if (ent.invuln > 0 && Math.floor(ent.invuln * 18) % 2 === 0) ctx.globalAlpha = 0.55;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(ent.x, ent.y, ent.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    const aim = ent === player ? Math.atan2(mouse.worldY - ent.y, mouse.worldX - ent.x) : Math.atan2((player?.y || ent.y) - ent.y, (player?.x || ent.x) - ent.x);
+    ctx.fillRect(ent.x + Math.cos(aim) * 10 - 3, ent.y + Math.sin(aim) * 10 - 3, 6, 6);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(ent.x + Math.cos(aim) * 10, ent.y + Math.sin(aim) * 10);
+    ctx.lineTo(ent.x + Math.cos(aim) * 25, ent.y + Math.sin(aim) * 25);
+    ctx.stroke();
+    drawBar(ent.x - 22, ent.y - 31, 44, 5, ent.hp / ent.maxHp, color);
+    if (ent === enemy) {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${ent.name} · ${ent.goal || 'thinking'}`, ent.x, ent.y - 42);
+    }
+    ctx.restore();
+  }
+
+  function drawBar(x, y, w, h, p, color) {
+    p = clamp(p, 0, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    roundRect(x, y, w, h, h / 2, true, false);
+    ctx.fillStyle = color;
+    roundRect(x, y, w * p, h, h / 2, true, false);
+  }
+
+  function roundRect(x, y, w, h, r, fill, stroke) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+  }
+
+  function drawResources() {
+    for (const r of resources) {
+      const bob = Math.sin(r.bob) * 3;
+      ctx.save();
+      ctx.translate(r.x, r.y + bob);
+      ctx.shadowBlur = 14;
+      if (r.type === 'iron') { ctx.fillStyle = '#c7ced8'; ctx.shadowColor = '#ffffff'; }
+      if (r.type === 'gold') { ctx.fillStyle = '#ffd166'; ctx.shadowColor = '#ffd166'; }
+      if (r.type === 'diamond') { ctx.fillStyle = '#8be9ff'; ctx.shadowColor = '#8be9ff'; }
+      if (r.type === 'emerald') { ctx.fillStyle = '#65ff9f'; ctx.shadowColor = '#65ff9f'; }
+      ctx.beginPath();
+      ctx.arc(0, 0, r.type === 'emerald' || r.type === 'diamond' ? 8 : 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawGenerators() {
+    for (const g of generators) {
+      ctx.save();
+      ctx.translate(g.x, g.y);
+      ctx.strokeStyle = g.type === 'emerald' ? '#65ff9f' : g.type === 'diamond' ? '#8be9ff' : g.type === 'gold' ? '#ffd166' : '#c7ced8';
+      ctx.globalAlpha = 0.65;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 18 + Math.sin(gameTime * 3 + g.x) * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawShop() {
+    const x = 11 * TILE + 16, y = 37 * TILE + 16;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#11182e';
+    ctx.strokeStyle = '#8be9ff';
+    ctx.lineWidth = 2;
+    roundRect(-22, -22, 44, 44, 10, true, true);
+    ctx.fillStyle = '#8be9ff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('SHOP', 0, 4);
+    ctx.restore();
+  }
+
+  function drawProjectiles() {
+    for (const p of projectiles) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(Math.atan2(p.vy, p.vx));
+      const soft = p.team === 'red' ? styleFor('red').soft : styleFor('blue').soft;
+      if (p.kind === 'fireball') {
+        ctx.shadowColor = '#ff9b54'; ctx.shadowBlur = 16; ctx.fillStyle = '#ff9b54';
+        ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
+      } else if (p.kind === 'tnt') {
+        ctx.fillStyle = '#d94762'; ctx.fillRect(-8, -8, 16, 16);
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('TNT', 0, 3);
+      } else if (p.kind === 'pearl') {
+        ctx.shadowColor = '#d7b7ff'; ctx.shadowBlur = 16; ctx.fillStyle = '#d7b7ff';
+        ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.strokeStyle = soft;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-8, 0); ctx.lineTo(9, 0); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.save();
+      ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawAttackSwings() {
+    for (const s of attackSwings) {
+      ctx.save();
+      ctx.globalAlpha = clamp(s.life / s.max, 0, 1);
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.angle);
+      ctx.strokeStyle = s.team === 'red' ? styleFor('red').soft : styleFor('blue').soft;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 72, -0.65, 0.65);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawFloatingTexts() {
+    ctx.save();
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    for (const f of floatingTexts) {
+      ctx.globalAlpha = clamp(f.life / f.max, 0, 1);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.restore();
+  }
+
+  function drawTargetHint() {
+    if (!player || !player.alive || state !== 'playing' || shopOpen) return;
+    const aim = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = '#8be9ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 84, aim - 0.16, aim + 0.16);
+    ctx.stroke();
+    if (enemy?.alive && dist(player.x, player.y, enemy.x, enemy.y) < 106) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.r + 7, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (blueBed?.alive && pointNearRect(player.x, player.y, blueBed, 105)) {
+      ctx.strokeStyle = styleFor('blue').soft;
+      ctx.strokeRect(blueBed.x - 4, blueBed.y - 4, blueBed.w + 8, blueBed.h + 8);
+    }
+    ctx.restore();
+  }
+
+  function drawVoidBackground() {
+    const w = innerWidth, h = innerHeight;
+    ctx.fillStyle = '#050712';
+    ctx.fillRect(0, 0, w, h);
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#8be9ff';
+    const step = 180;
+    const ox = -((camX * 0.15) % step);
+    const oy = -((camY * 0.15) % step);
+    for (let y = oy; y < h + step; y += step) {
+      for (let x = ox; x < w + step; x += step) {
+        ctx.fillRect(x, y, 2, 2);
+      }
+    }
+    ctx.restore();
+  }
+
+  function render() {
+    const viewW = innerWidth, viewH = innerHeight;
+    if (state === 'playing' && player) {
+      const targetX = player.alive ? player.x : (redBed.x + redBed.w / 2);
+      const targetY = player.alive ? player.y : (redBed.y + redBed.h / 2);
+      camX = clamp(targetX - viewW / 2, 0, WORLD_W - viewW);
+      camY = clamp(targetY - viewH / 2, 0, WORLD_H - viewH);
+      if (screenShake > 0) {
+        camX += rand(-screenShake, screenShake);
+        camY += rand(-screenShake, screenShake);
+      }
+      updateInputWorld();
+    }
+
+    drawVoidBackground();
+    ctx.save();
+    ctx.translate(-camX, -camY);
+
+    if (map) {
+      const startX = clamp(Math.floor(camX / TILE) - 2, 0, MAP_W - 1);
+      const endX = clamp(Math.ceil((camX + viewW) / TILE) + 2, 0, MAP_W - 1);
+      const startY = clamp(Math.floor(camY / TILE) - 2, 0, MAP_H - 1);
+      const endY = clamp(Math.ceil((camY + viewH) / TILE) + 2, 0, MAP_H - 1);
+      for (let y = startY; y <= endY; y++) {
+        for (let x = startX; x <= endX; x++) drawTile(getTile(x, y), x * TILE, y * TILE);
+      }
+
+      drawGenerators();
+      drawResources();
+      drawShop();
+      drawBed(redBed);
+      drawBed(blueBed);
+      drawProjectiles();
+      drawEntity(enemy);
+      drawEntity(player);
+      drawAttackSwings();
+      drawTargetHint();
+      drawParticles();
+      drawFloatingTexts();
+      drawPlacementGhost();
+    }
+    ctx.restore();
+
+    if (paused && state === 'playing') drawPauseOverlay();
+    renderUI();
+  }
+
+  function drawPlacementGhost() {
+    if (!player || !player.alive || state !== 'playing' || shopOpen) return;
+    const tx = gx(mouse.worldX), ty = gy(mouse.worldY);
+    const c = centerOf(tx, ty);
+    if (dist(player.x, player.y, c.x, c.y) > 185 + (player.placeReachBonus || 0)) return;
+    ctx.save();
+    ctx.globalAlpha = 0.42;
+    ctx.strokeStyle = getTile(tx, ty) === VOID ? styleFor('red').player : '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(tx * TILE + 2, ty * TILE + 2, TILE - 4, TILE - 4);
+    ctx.restore();
+  }
+
+  function drawPauseOverlay() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, innerWidth, innerHeight);
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 44px sans-serif';
+    ctx.fillText('Paused', innerWidth / 2, innerHeight / 2);
+    ctx.font = '16px sans-serif';
+    ctx.fillText('Press P to resume', innerWidth / 2, innerHeight / 2 + 35);
+    ctx.restore();
+  }
+
+  function renderUI() {
+    if (!player) {
+      statsEl.innerHTML = '<div class="stat">Press Enter to start</div>';
+      hotbarEl.innerHTML = '';
+      return;
+    }
+    const redStatus = redBed.alive ? `Alive (${Math.ceil(redBed.hp)})` : 'Destroyed';
+    const blueStatus = blueBed.alive ? `Alive (${Math.ceil(blueBed.hp)})` : 'Destroyed';
+    statsEl.innerHTML = `
+      <div class="stat">HP: <b>${Math.ceil(player.hp)}/${player.maxHp}</b></div>
+      <div class="stat">Time: <b>${Math.floor(gameTime)}s</b></div>
+      <div class="stat">Red Bed: <b style="color:${redBed.alive ? 'var(--good)' : 'var(--danger)'}">${redStatus}</b></div>
+      <div class="stat">Blue Bed: <b style="color:${blueBed.alive ? '#61a8ff' : 'var(--danger)'}">${blueStatus}</b></div>
+      <div class="stat">Kills: <b>${player.kills}</b></div>
+      <div class="stat">Bot: <b>${enemy?.profile?.label || 'Normal'} ${enemy?.personality?.name ? `(${enemy.personality.name})` : ''}</b></div>
+      <div class="stat">Bot Goal: <b>${enemy?.goal || '-'}</b></div>
+      <div class="stat">Kit: <b>${player.kit}</b></div>
+      <div class="stat">Map: <b>${mapVariants[selectedMapIndex].name}</b></div>
+      <div class="stat">Upgrades: <b>S${player.sharpness} P${player.protection} H${player.haste} F${player.forge}</b></div>
+    `;
+    hotbarEl.innerHTML = `
+      <div class="slot"><b>${player.inv.iron}</b>Iron</div>
+      <div class="slot"><b>${player.inv.gold}</b>Gold</div>
+      <div class="slot"><b>${player.inv.diamond}</b>Diamond</div>
+      <div class="slot"><b>${player.inv.emerald}</b>Emerald</div>
+      <div class="slot"><b>${player.blocks}</b>Blocks</div>
+      <div class="slot"><b>${swordNames[player.sword]}</b>Sword</div>
+      <div class="slot"><b>${armorNames[player.armor]}</b>Armor</div>
+      <div class="slot"><b>${player.bow ? player.arrows : 'No'}</b>Bow</div>
+      <div class="slot"><b>${player.fireballs}/${player.tnt}/${player.pearls}</b>Q/R/T</div>
+      <div class="slot"><b>${player.gapples}</b>Gapples</div>
+      <div class="slot"><b>${player.combo > 1 ? player.combo + 'x' : '-'}</b>Combo</div>
+      <div class="slot"><b>${Math.round((player.ground || 1) * 100)}%</b>Ground</div>
+    `;
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.033, (now - lastTime) / 1000 || 0);
+    lastTime = now;
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  function fillSelect(select, items, labelFn) {
+    if (!select) return;
+    select.innerHTML = items.map((item, i) => `<option value="${i}">${escapeHtml(labelFn(item, i))}</option>`).join('');
+  }
+
+  function populateMenuControls() {
+    fillSelect(difficultySelect, botProfiles, b => b.label);
+    fillSelect(botStyleSelect, botPersonalities, b => b.name);
+    fillSelect(kitSelect, kits, k => k.name);
+    fillSelect(mapSelect, mapVariants, m => m.name);
+    fillSelect(styleSelect, teamStyles, s => s.name);
+    setBotDifficulty(selectedBotIndex);
+    setBotPersonality(selectedBotStyleIndex);
+    setKit(selectedKitIndex);
+    setMapVariant(selectedMapIndex);
+    setTeamStyle(selectedStyleIndex);
+    setMode(selectedMode);
+  }
+
+  difficultySelect?.addEventListener('change', e => setBotDifficulty(Number(e.target.value)));
+  botStyleSelect?.addEventListener('change', e => setBotPersonality(Number(e.target.value)));
+  kitSelect?.addEventListener('change', e => setKit(Number(e.target.value)));
+  mapSelect?.addEventListener('change', e => { setMapVariant(Number(e.target.value)); makeMap(); });
+  styleSelect?.addEventListener('change', e => setTeamStyle(Number(e.target.value)));
+  modeSelect?.addEventListener('change', e => setMode(e.target.value));
+  startBtn?.addEventListener('click', initGame);
+  randomBtn?.addEventListener('click', () => {
+    setBotDifficulty(Math.floor(Math.random() * botProfiles.length));
+    setBotPersonality(Math.floor(Math.random() * botPersonalities.length));
+    setKit(Math.floor(Math.random() * kits.length));
+    setMapVariant(Math.floor(Math.random() * mapVariants.length));
+    setTeamStyle(Math.floor(Math.random() * teamStyles.length));
+    setMode(choice(Object.keys(matchModes)));
+    makeMap();
+    toast('Random setup selected.');
+  });
+
+  shopEl.addEventListener('click', e => {
+    const card = e.target.closest('.buy');
+    if (card?.dataset?.buy) buy(card.dataset.buy);
+  });
+
+  addEventListener('mousemove', e => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    updateInputWorld();
+  });
+  addEventListener('mousedown', e => {
+    mouse.down = true;
+    if (e.button === 0) playerAttack();
+    if (e.button === 2) placeBlock();
+  });
+  addEventListener('mouseup', () => { mouse.down = false; });
+  addEventListener('contextmenu', e => e.preventDefault());
+
+  addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+    keys.add(k);
+
+    if (k === 'enter') {
+      if (state === 'menu' || state === 'gameover') initGame();
+      return;
+    }
+    if (k === 'p' && state === 'playing') {
+      paused = !paused;
+      if (paused) toggleShop(false);
+      return;
+    }
+    if (state !== 'playing' || paused) return;
+    if (k === ' ') playerDash();
+    if (k === 'e') toggleShop();
+    if (['1','2','3','4','5','6','7','8','9','0'].includes(k)) buy(k);
+    if (k === 'f') shootArrow(player, mouse.worldX, mouse.worldY);
+    if (k === 'q') throwUtility(player, mouse.worldX, mouse.worldY, 'fireball');
+    if (k === 'g') consumeGapple(player);
+    if (k === 'r') throwUtility(player, mouse.worldX, mouse.worldY, 'tnt');
+    if (k === 't') throwUtility(player, mouse.worldX, mouse.worldY, 'pearl');
+  });
+
+  addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+
+  populateMenuControls();
+
+  // Spawn a tiny starter state for menu rendering.
+  makeMap();
+  player = makePlayer(13 * TILE + 16, 35 * TILE + 16, 'red');
+  enemy = makeEnemy();
+  redBed = { x: 12 * TILE + 2, y: 35 * TILE + 3, w: 60, h: 27, team: 'red', hp: 22, maxHp: 22, alive: true };
+  blueBed = { x: 61 * TILE + 2, y: 12 * TILE + 3, w: 60, h: 27, team: 'blue', hp: 22, maxHp: 22, alive: true };
+  generators = [];
+  resources = [];
+  projectiles = [];
+  particles = [];
+/* ============================================================
+   AetherBeds 2D v5.3.3 - Private Mod API Hook v5
+   Paste this INSIDE your main (() => { ... }) game script,
+   directly BEFORE the final renderUI(); call.
+
+   Major purpose:
+   - The game stores variables like player, enemy, map, resources,
+     generators, beds, and combat functions inside a private closure.
+   - This hook exposes a controlled game-specific API at
+     window.AetherBedsModAPI so your private userscript can interact
+     with THIS game only.
+   ============================================================ */
+
+window.AetherBedsModAPI = {
+  version: "AetherBeds 2D v5.3.3 Private Hook v5",
+
+  flags: {
+    noBoundaries: false,
+    removePlacementLimits: false,
+    alwaysRespawn: false,
+    antiCheatBypass: false,
+    arrowBypass: false
+  },
+
+  constants: {
+    TILE,
+    MAP_W,
+    MAP_H,
+    WORLD_W,
+    WORLD_H,
+    VOID,
+    GRASS,
+    RED_BLOCK,
+    BLUE_BLOCK,
+    MID,
+    STONE
+  },
+
+  get state() { return state; },
+  set state(v) { if (v !== state && markSuspiciousAction?.("state", String(v))) return; state = v; },
+
+  get paused() { return paused; },
+  set paused(v) { paused = !!v; },
+
+  get shopOpen() { return shopOpen; },
+
+  get canvas() { return canvas; },
+  get ctx() { return ctx; },
+  get player() { return player; },
+  get enemy() { return enemy; },
+  get redBed() { return redBed; },
+  get blueBed() { return blueBed; },
+  get map() { return map; },
+  get generators() { return generators; },
+  get resources() { return resources; },
+  get projectiles() { return projectiles; },
+  get particles() { return particles; },
+  get attackSwings() { return attackSwings; },
+  get floatingTexts() { return floatingTexts; },
+  get keys() { return keys; },
+  get mouse() { return mouse; },
+  get camX() { return camX; },
+  set camX(v) { camX = v; },
+  get camY() { return camY; },
+  set camY(v) { camY = v; },
+
+  idx,
+  inBounds,
+  gx,
+  gy,
+  dist,
+  clamp,
+  centerOf,
+  getTile,
+  setTile(tx, ty, tile) { if (markSuspiciousAction?.("map edit", `${tx},${ty}`)) return; return setTile(tx, ty, tile); },
+  isWalkableAt,
+  isWalkableTile,
+  nearestWalkableWorld,
+  groundCoverage,
+  pointNearRect,
+  protectedObjectAtTile,
+  canBotPlaceBlock,
+
+  toast,
+  burst,
+  floatText,
+  damageEntity(target, amount, sourceTeam) { if (sourceTeam === "red" && target === enemy && markSuspiciousAction?.("direct damage", String(Math.round(amount)))) return; return damageEntity(target, amount, sourceTeam); },
+  killEntity(target, sourceTeam) { if (sourceTeam === "red" && target === enemy && markSuspiciousAction?.("direct kill", "enemy")) return; return killEntity(target, sourceTeam); },
+  respawnEntity(ent) { if (ent === player && markSuspiciousAction?.("direct respawn", "player")) return; return respawnEntity(ent); },
+  breakBed(bed, breakerTeam) { if (breakerTeam === "red" && markSuspiciousAction?.("direct bed break", bed?.team || "unknown")) return; return breakBed(bed, breakerTeam); },
+  buy(slot, force = false) { return buy(slot, force); },
+  shootArrow,
+  throwUtility,
+  consumeGapple,
+  placeBlock,
+  playerDash,
+  playerAttack,
+  toggleShop,
+  spend,
+  spendMulti,
+  applyForgeUpgrade,
+  resetCombo,
+  registerCombo,
+  renderUI,
+  flagSuspicious(action, detail = '') { return markSuspiciousAction?.(action, detail); },
+  syncAntiCheat(graceMs = 700) { syncAntiCheatPosition(graceMs); },
+
+  teleportPlayer(x, y) {
+    if (!player) return;
+    if (markSuspiciousAction?.("teleport", "player")) return;
+    player.x = x;
+    player.y = y;
+    player.vx = 0;
+    player.vy = 0;
+  },
+
+  teleportEntity(ent, x, y) {
+    if (!ent) return;
+    ent.x = x;
+    ent.y = y;
+    ent.vx = 0;
+    ent.vy = 0;
+  },
+
+  spawnResource(type, x, y, amount = 1) {
+    if (!resources) return;
+    for (let i = 0; i < amount; i++) {
+      resources.push({
+        x: x + (Math.random() - 0.5) * 24,
+        y: y + (Math.random() - 0.5) * 24,
+        vx: 0,
+        vy: 0,
+        type,
+        life: 30
+      });
+    }
+  },
+
+  safeRespawn(ent = player, spawnMode = "base") {
+    if (!ent) return;
+    if (ent === player && player.alive && markSuspiciousAction?.("respawn", "while alive")) return;
+    ent.alive = true;
+    ent.hp = ent.maxHp || 24;
+    ent.invuln = Math.max(ent.invuln || 0, 1.25);
+    ent.respawn = 0;
+    ent.voidTime = 0;
+    ent.vx = 0;
+    ent.vy = 0;
+    if (ent === player) syncAntiCheatPosition(1400);
+
+    if (spawnMode === "current") return;
+
+    if (ent.team === "red") {
+      ent.x = 13 * TILE + 16;
+      ent.y = 35 * TILE + 16;
+    } else {
+      ent.x = 62 * TILE + 16;
+      ent.y = 12 * TILE + 16;
+    }
+  },
+
+  removeWorldBoundariesFor(ent = player, push = 24) {
+    if (!ent || !this.flags.noBoundaries) return;
+    if (ent.x <= 4) ent.x = -push;
+    if (ent.y <= 4) ent.y = -push;
+    if (ent.x >= WORLD_W - 4) ent.x = WORLD_W + push;
+    if (ent.y >= WORLD_H - 4) ent.y = WORLD_H + push;
+  },
+
+  forcePlaceBlockAt(worldX, worldY, team = "red", consume = true) {
+    if (!player) return false;
+
+    const tx = gx(worldX);
+    const ty = gy(worldY);
+    if (!inBounds(tx, ty)) return false;
+    if (getTile(tx, ty) !== VOID) return false;
+
+    const c = centerOf(tx, ty);
+    if (redBed && pointNearRect(c.x, c.y, redBed, 4)) return false;
+    if (blueBed && pointNearRect(c.x, c.y, blueBed, 4)) return false;
+    if (consume && player.blocks <= 0) return false;
+
+    setTile(tx, ty, team === "blue" ? BLUE_BLOCK : RED_BLOCK);
+    if (consume) player.blocks--;
+    burst(c.x, c.y, team === "blue" ? "#61a8ff" : "#ff5f78", 5);
+    return true;
+  },
+
+  forceBreakBed(team = "blue") {
+    const bed = team === "blue" ? blueBed : redBed;
+    if (!bed || !bed.alive) return false;
+    breakBed(bed, team === "blue" ? "red" : "blue");
+    return true;
+  },
+
+  toggleAntiCheat(value, opts = {}) {
+    const requested = typeof value === "boolean" ? value : !antiCheat.enabled;
+    if (!requested && !opts.pro) {
+      antiCheat.enabled = true;
+      antiCheat.lastT = 0;
+      if (!opts.silent) toast("AntiCheat is always on unless PRO disables it.");
+      return antiCheat.enabled;
+    }
+    antiCheat.enabled = requested;
+    antiCheat.lastT = 0;
+    if (!opts.silent) toast(`AntiCheat ${antiCheat.enabled ? "enabled" : "disabled"}.`);
+    return antiCheat.enabled;
+  },
+
+  get antiCheatEnabled() { return antiCheat.enabled; },
+
+  applyBattlepassRewards(rewards = []) {
+    if (!player) return;
+    const names = new Set(rewards.map(r => Array.isArray(r) ? r[1] : r));
+    if (names.has("Luxury Blocks")) player.blocks = Math.max(player.blocks, 96);
+    if (names.has("Launch Dash")) player.dashBonus = Math.max(player.dashBonus || 0, 0.45);
+    if (names.has("Speed Lines")) player.speed = Math.max(player.speed || 225, 238);
+    if (names.has("Haste Pulse")) player.haste = Math.max(player.haste || 0, 1);
+    if (names.has("Sharp Shine")) player.sharpness = Math.max(player.sharpness || 0, 1);
+    if (names.has("Armor Aura")) player.protection = Math.max(player.protection || 0, 1);
+    if (names.has("Meteor Balls")) player.fireballs = Math.max(player.fireballs || 0, 3);
+    if (names.has("Dragon Pearl")) player.pearls = Math.max(player.pearls || 0, 1);
+    if (names.has("Bow Flare")) { player.bow = true; player.arrows = Math.max(player.arrows || 0, 24); }
+  },
+
+  setFlag(name, value) {
+    if (Object.prototype.hasOwnProperty.call(this.flags, name)) {
+      this.flags[name] = !!value;
+      toast(`Mod flag ${name}: ${value ? "ON" : "OFF"}`);
+    }
+  }
+};
+
+
+  renderUI();
+})();
+</script>
+
+<!-- ============================================================
+     Embedded AetherBeds Private Menu v5.2.2
+     This is included directly so no Tampermonkey/userscript manager
+     is required for local file:// usage.
+     ============================================================ -->
+<script>
+// ==UserScript==
+// @name         AetherBeds 2D v5.3.3 - Private Mod Menu v5
+// @namespace    aetherbeds.local.private
+// @version      5.2.0
+// @description  Private single-game mod menu for your own AetherBeds 2D v5.3.3 HTML.
+// @match        file:///*sigmabw*.html*
+// @match        *://*/sigmabw*.html*
+// @grant        none
+// @run-at       document-idle
+// ==/UserScript==
+
+(() => {
+  "use strict";
+
+  /* ============================================================
+     BOOTSTRAP
+     The userscript waits until the hook exists. The hook is required
+     because the actual game variables are inside a private closure.
+     ============================================================ */
+
+  const STORAGE_KEY = "AetherBedsPrivateMenuV5";
+
+  const bootTimer = setInterval(() => {
+    if (window.AetherBedsModAPI) {
+      clearInterval(bootTimer);
+      boot(window.AetherBedsModAPI);
+    }
+  }, 200);
+
+  function boot(api) {
+    if (window.__AETHERBEDS_PRIVATE_MENU_V5__) return;
+    window.__AETHERBEDS_PRIVATE_MENU_V5__ = true;
+
+    /* ============================================================
+       DEFAULT SETTINGS
+       Each module has its own settings object. These are saved to
+       localStorage and can be changed from the right-click settings UI.
+       ============================================================ */
+
+    const defaults = {
+      global: {
+        menuKey: "ShiftRight",
+        accent: "#8be9ff",
+        guiScale: 1,
+        opacity: 0.96,
+        notifications: true
+      },
+
+      KillAura: { range: 110, attackTime: 0.085, damageMultiplier: 1, requireLOS: false, knockback: 130 },
+      ComboAssist: { maxCombo: 8, delay: 95, keepDistance: 74, strafe: true, wtap: true, humanise: true },
+      Reach: { distance: 145, dynamic: true, onlyMoving: false, requireLOS: false, showCircle: true },
+      RewardExploit: { type: "iron", amount: 12, interval: 700, target: "red", randomOffset: true },
+      AntiVoid: { safeRadius: 5, invuln: 0.8, baseFallback: true },
+      InstantRespawn: { delay: 20, invuln: 1.1 },
+      AlwaysRespawn: { delay: 20, invuln: 1.5, spawn: "base" },
+      Scaffold: { delay: 70, consumeBlocks: true, predictive: true, onlyVoid: true },
+      SafeWalk: { safeDistance: 20, onlyVoid: true, allowDash: true, stopStrength: 0.08, highlight: true },
+      RemovePlacementLimits: { consumeBlocks: true, allowFar: true, allowAir: true },
+      RemoveBreakLimits: { range: 9999 },
+      NoHitDelay: { delay: 18 },
+      ProjectileExploit: { delay: 35, preferFireballs: false },
+      AntiCheatBypass: { reduceSpeed: true, spoofCooldowns: true },
+      ProjectileAimbot: { strength: 1, range: 900, arrows: true, fireballs: true, tnt: true },
+      ArrowBypass: { arrows: true, showIndicator: false },
+
+      ArrowBypass: {
+        on: () => {
+          api.setFlag?.("arrowBypass", true);
+        },
+        off: () => {
+          api.setFlag?.("arrowBypass", false);
+          stop("ArrowBypass");
+        }
+      },
+
+      InstantBreak: { range: 120 },
+      Speed: { multiplier: 1.65 },
+      AntiDeath: { minHp: 8, invuln: 0.4, removeProjectiles: true, projectileRadius: 105 },
+      InfiniteDash: { cooldown: 0 },
+      NoBoundaries: { push: 24 },
+      AutoBuy: { blocksAt: 48, projectiles: true, upgrades: true, reserveIron: 0, reserveGold: 0 },
+      Breaker: { range: 105, delay: 430, requirePickaxe: false, stopNearEnemy: false },
+      InfiniteProjectiles: { arrows: true, fireballs: true, tnt: true, pearls: true, visualSpoof: false },
+      AutoWin: { delay: 160, returnBase: false, instantKill: true },
+      ProjectileAura: { attackTime: 0.26, range: 850, useFireballs: false, requireLOS: false },
+      DashExtender: { multiplier: 2.2 },
+      Magnet: { range: 900, speed: 42, instantDistance: 28, types: "all" }
+    };
+
+    /* Default keybinds. Users can edit every one from module settings. */
+    const defaultBinds = {
+      KillAura: "KeyK",
+      ComboAssist: "KeyC",
+      Reach: "KeyR",
+      RewardExploit: "",
+      AntiVoid: "",
+      InstantRespawn: "",
+      AlwaysRespawn: "",
+      Scaffold: "KeyZ",
+      SafeWalk: "KeyB",
+      RemovePlacementLimits: "",
+      RemoveBreakLimits: "",
+      NoHitDelay: "",
+      ProjectileExploit: "",
+      AntiCheatBypass: "",
+      ProjectileAimbot: "",
+      ArrowBypass: "",
+      InstantBreak: "",
+      Speed: "KeyV",
+      AntiDeath: "KeyH",
+      InfiniteDash: "",
+      NoBoundaries: "",
+      AutoBuy: "",
+      Breaker: "",
+      InfiniteProjectiles: "",
+      AutoWin: "KeyJ",
+      ProjectileAura: "",
+      DashExtender: "",
+      Magnet: "KeyM"
+    };
+
+    const loaded = load();
+    const cfg = deepMerge(safeClone(defaults), loaded.cfg || {});
+    const keybinds = { ...defaultBinds, ...(loaded.keybinds || {}) };
+    const toggles = {};
+    const loops = new Map();
+    const originals = { speed: null, dashBonus: null };
+
+    /* Module categories shown in the GUI. */
+    const categories = {
+      Combat: ["KillAura", "ComboAssist", "Reach", "NoHitDelay", "ProjectileAura", "ProjectileExploit", "ProjectileAimbot", "ArrowBypass", "InstantBreak", "Breaker", "RemoveBreakLimits"],
+      Movement: ["Speed", "DashExtender", "InfiniteDash", "SafeWalk", "Scaffold", "AntiVoid", "NoBoundaries"],
+      Player: ["InstantRespawn", "AlwaysRespawn", "AntiDeath"],
+      Utility: ["RewardExploit", "Magnet", "AutoBuy", "InfiniteProjectiles", "RemovePlacementLimits", "AntiCheatBypass"],
+      Win: ["AutoWin"]
+    };
+
+    const descriptions = {
+      KillAura: "Automatically attacks the blue bot when it enters range.",
+      ComboAssist: "Times hits, spacing, strafing, and knockback pressure to maintain combos.",
+      Reach: "Extends melee hit distance against the bot.",
+      RewardExploit: "Spawns selected resources at chosen generators.",
+      AntiVoid: "Saves you if your whole character enters the void.",
+      InstantRespawn: "Respawns instantly while your bed is still alive.",
+      AlwaysRespawn: "Allows respawn even after your bed is broken.",
+      Scaffold: "Places blocks beneath you while over void.",
+      SafeWalk: "Stops you from accidentally walking off edges.",
+      RemovePlacementLimits: "Removes reach and adjacent-block placement limits.",
+      RemoveBreakLimits: "Removes normal block and bed breaking distance limits.",
+      NoHitDelay: "Removes the attacker melee cooldown for this game.",
+      ProjectileExploit: "Removes projectile firing cooldowns and works with ProjectileAura and ProjectileAimbot.",
+      AntiCheatBypass: "Attempts to stay under this game's AntiCheat thresholds.",
+      ProjectileAimbot: "Redirects your arrows/fireballs/TNT toward the bot.",
+      ArrowBypass: "Makes arrows pass through wool/team blocks instead of disappearing.",
+      InstantBreak: "Instantly breaks the enemy bed when close enough.",
+      Speed: "Multiplies movement speed.",
+      AntiDeath: "Prevents melee, projectile, and void death.",
+      InfiniteDash: "Removes dash cooldown.",
+      NoBoundaries: "Lets you leave the normal map boundary clamp.",
+      AutoBuy: "Automatically buys smart shop items/upgrades.",
+      Breaker: "Breaks the enemy bed at a legit-looking pace.",
+      InfiniteProjectiles: "Keeps arrows, fireballs, TNT, and pearls filled.",
+      AutoWin: "Teleports to bed, breaks it, then final-kills the bot.",
+      ProjectileAura: "Automatically shoots projectiles at the bot.",
+      DashExtender: "Extends dash length.",
+      Magnet: "Pulls resources toward the player."
+    };
+
+    /* ============================================================
+       MODULE DEFINITIONS
+       Every module has:
+       - on(): starts loops/patches
+       - off(): cleans up loops/patches
+       This makes toggling safe and predictable.
+       ============================================================ */
+
+    const modules = {
+      KillAura: {
+        on: () => loop("KillAura", () => Math.max(0.02, Number(cfg.KillAura.attackTime ?? (cfg.KillAura.delay || 85) / 1000)) * 1000, () => {
+          const p = api.player, e = api.enemy;
+          if (!alive(p) || !alive(e)) return;
+
+          const range = Math.max(cfg.KillAura.range, toggles.Reach ? getReachDistance() : 0);
+          if (api.dist(p.x, p.y, e.x, e.y) > range) return;
+          if (cfg.KillAura.requireLOS && !lineOfSight(p.x, p.y, e.x, e.y)) return;
+
+          const baseDamage = 7 + (p.sword || 0) * 2.2 + (p.sharpness || 0) * 1.25;
+          api.damageEntity(e, baseDamage * cfg.KillAura.damageMultiplier, "red");
+
+          const dx = e.x - p.x;
+          const dy = e.y - p.y;
+          const d = Math.hypot(dx, dy) || 1;
+          e.vx += dx / d * cfg.KillAura.knockback;
+          e.vy += dy / d * cfg.KillAura.knockback;
+        }),
+        off: () => stop("KillAura")
+      },
+
+      ComboAssist: {
+        on: () => loop("ComboAssist", () => cfg.ComboAssist.delay, () => {
+          const p = api.player, e = api.enemy;
+          if (!alive(p) || !alive(e)) return;
+
+          const d = api.dist(p.x, p.y, e.x, e.y);
+          if (d > getReachDistance() + 28) return;
+
+          if ((p.combo || 0) < cfg.ComboAssist.maxCombo) {
+            const comboDamage = 4.8 + (p.sword || 0) * 1.7 + Math.min(p.combo || 0, cfg.ComboAssist.maxCombo) * 0.35;
+            api.damageEntity(e, comboDamage, "red");
+            p.combo = Math.min(cfg.ComboAssist.maxCombo, (p.combo || 0) + 1);
+            p.comboTimer = 0.85;
+          }
+
+          const dx = p.x - e.x;
+          const dy = p.y - e.y;
+          const len = Math.hypot(dx, dy) || 1;
+
+          if (cfg.ComboAssist.keepDistance > 0) {
+            const push = (cfg.ComboAssist.keepDistance - d) * 0.018;
+            p.vx += dx / len * push * 140;
+            p.vy += dy / len * push * 140;
+          }
+
+          if (cfg.ComboAssist.strafe) {
+            const side = Math.sin(performance.now() / 220) > 0 ? 1 : -1;
+            p.vx += (-dy / len) * side * 18;
+            p.vy += (dx / len) * side * 18;
+          }
+
+          if (cfg.ComboAssist.wtap) {
+            e.vx += (e.x - p.x) / len * 32;
+            e.vy += (e.y - p.y) / len * 32;
+          }
+        }),
+        off: () => stop("ComboAssist")
+      },
+
+      Reach: {
+        on: () => drawLoopOn(),
+        off: () => drawLoopMaybeOff()
+      },
+
+      RewardExploit: {
+        on: () => loop("RewardExploit", () => cfg.RewardExploit.interval, () => {
+          for (const g of api.generators || []) {
+            const target = cfg.RewardExploit.target;
+            const ok =
+              target === "all" ||
+              (target === "mid" && (g.type === "diamond" || g.type === "emerald")) ||
+              g.team === target;
+
+            if (!ok) continue;
+
+            const ox = cfg.RewardExploit.randomOffset ? (Math.random() - 0.5) * 24 : 0;
+            const oy = cfg.RewardExploit.randomOffset ? (Math.random() - 0.5) * 24 : 0;
+            api.spawnResource(cfg.RewardExploit.type, g.x + ox, g.y + oy, cfg.RewardExploit.amount);
+          }
+        }),
+        off: () => stop("RewardExploit")
+      },
+
+      AntiVoid: {
+        on: () => loop("AntiVoid", 25, () => {
+          const p = api.player;
+          if (!alive(p)) return;
+
+          if (api.groundCoverage(p) <= 0.001) {
+            const safe = api.nearestWalkableWorld(p.x, p.y, cfg.AntiVoid.safeRadius);
+            if (safe) api.teleportPlayer(safe.x, safe.y);
+            else if (cfg.AntiVoid.baseFallback) { p.vx = 0; p.vy = 0; }
+
+            p.invuln = Math.max(p.invuln || 0, cfg.AntiVoid.invuln);
+          }
+        }),
+        off: () => stop("AntiVoid")
+      },
+
+      InstantRespawn: {
+        on: () => loop("InstantRespawn", () => cfg.InstantRespawn.delay, () => {
+          const p = api.player;
+          if (!p || p.alive) return;
+
+          if (api.redBed?.alive) {
+            api.safeRespawn(p);
+            p.invuln = Math.max(p.invuln || 0, cfg.InstantRespawn.invuln);
+          }
+        }),
+        off: () => stop("InstantRespawn")
+      },
+
+      AlwaysRespawn: {
+        on: () => {
+          api.setFlag?.("alwaysRespawn", true);
+          loop("AlwaysRespawn", () => cfg.AlwaysRespawn.delay, () => {
+            const p = api.player;
+            if (!p) return;
+
+            if (!p.alive || p.hp <= 0 || api.state === "gameover") {
+              api.state = "playing";
+              api.safeRespawn(p, cfg.AlwaysRespawn.spawn);
+              p.invuln = Math.max(p.invuln || 0, cfg.AlwaysRespawn.invuln);
+            }
+          });
+        },
+        off: () => {
+          api.setFlag?.("alwaysRespawn", false);
+          stop("AlwaysRespawn");
+        }
+      },
+
+      Scaffold: {
+        on: () => loop("Scaffold", () => cfg.Scaffold.delay, () => {
+          const p = api.player;
+          if (!alive(p)) return;
+
+          let x = p.x;
+          let y = p.y;
+
+          if (cfg.Scaffold.predictive) {
+            x += (p.vx || 0) * 0.12;
+            y += (p.vy || 0) * 0.12;
+          }
+
+          const tx = api.gx(x), ty = api.gy(y);
+          if (cfg.Scaffold.onlyVoid && api.getTile(tx, ty) !== api.constants.VOID) return;
+
+          api.forcePlaceBlockAt(x, y, "red", cfg.Scaffold.consumeBlocks);
+        }),
+        off: () => stop("Scaffold")
+      },
+
+      SafeWalk: {
+        on: () => {
+          drawLoopOn();
+          loop("SafeWalk", 16, () => {
+            const p = api.player;
+            if (!alive(p)) return;
+            if (cfg.SafeWalk.allowDash && (p.dashCd || 0) > 0.9) return;
+
+            const lookX = p.x + (p.vx || 0) * 0.16;
+            const lookY = p.y + (p.vy || 0) * 0.16;
+            const tx = api.gx(lookX), ty = api.gy(lookY);
+
+            if (api.getTile(tx, ty) !== api.constants.VOID) return;
+            if (cfg.SafeWalk.onlyVoid && api.groundCoverage(p) <= 0.001) return;
+
+            p.vx *= cfg.SafeWalk.stopStrength;
+            p.vy *= cfg.SafeWalk.stopStrength;
+
+            const safe = api.nearestWalkableWorld(p.x, p.y, 2);
+            if (safe && api.dist(p.x, p.y, safe.x, safe.y) > cfg.SafeWalk.safeDistance) {
+              p.x += (safe.x - p.x) * 0.08;
+              p.y += (safe.y - p.y) * 0.08;
+            }
+          });
+        },
+        off: () => {
+          stop("SafeWalk");
+          drawLoopMaybeOff();
+        }
+      },
+
+      RemovePlacementLimits: {
+        on: () => {
+          api.setFlag?.("removePlacementLimits", true);
+          document.addEventListener("contextmenu", unlimitedPlace, true);
+        },
+        off: () => {
+          api.setFlag?.("removePlacementLimits", false);
+          document.removeEventListener("contextmenu", unlimitedPlace, true);
+        }
+      },
+
+      RemoveBreakLimits: {
+        on: () => api.setFlag?.("removeBreakLimits", true),
+        off: () => api.setFlag?.("removeBreakLimits", false)
+      },
+
+      NoHitDelay: {
+        on: () => loop("NoHitDelay", () => cfg.NoHitDelay.delay, () => {
+          const p = api.player;
+          if (p) p.attackCd = 0;
+        }),
+        off: () => stop("NoHitDelay")
+      },
+
+      ProjectileExploit: {
+        on: () => loop("ProjectileExploit", () => cfg.ProjectileExploit.delay, () => {
+          const p = api.player;
+          if (!alive(p)) return;
+          p.bowCd = 0;
+          p.bow = true;
+          p.arrows = Math.max(p.arrows || 0, 1);
+        }),
+        off: () => stop("ProjectileExploit")
+      },
+
+      AntiCheatBypass: {
+        on: () => {
+          api.setFlag?.("antiCheatBypass", true);
+          loop("AntiCheatBypass", 30, () => {
+            const p = api.player;
+            if (!alive(p)) return;
+            if (cfg.AntiCheatBypass.reduceSpeed) p.speed = Math.min(p.speed || 225, 238);
+            if (cfg.AntiCheatBypass.spoofCooldowns) { p.attackCd = Math.max(p.attackCd || 0, 0.10); p.dashCd = Math.max(p.dashCd || 0, 0.28); p.bowCd = Math.max(p.bowCd || 0, 0.20); }
+            api.syncAntiCheat?.(350);
+          });
+        },
+        off: () => { api.setFlag?.("antiCheatBypass", false); stop("AntiCheatBypass"); }
+      },
+
+      ProjectileAimbot: {
+        on: () => loop("ProjectileAimbot", 20, () => {
+          const e = api.enemy;
+          if (!alive(e)) return;
+
+          for (const pr of api.projectiles || []) {
+            if (pr.team !== "red") continue;
+            if (api.dist(pr.x, pr.y, e.x, e.y) > cfg.ProjectileAimbot.range) continue;
+            if (pr.kind === "arrow" && !cfg.ProjectileAimbot.arrows) continue;
+            if (pr.kind === "fireball" && !cfg.ProjectileAimbot.fireballs) continue;
+            if (pr.kind === "tnt" && !cfg.ProjectileAimbot.tnt) continue;
+
+            const speed = Math.hypot(pr.vx, pr.vy) || 520;
+            const dx = e.x - pr.x;
+            const dy = e.y - pr.y;
+            const d = Math.hypot(dx, dy) || 1;
+
+            const tx = dx / d * speed;
+            const ty = dy / d * speed;
+
+            pr.vx += (tx - pr.vx) * cfg.ProjectileAimbot.strength;
+            pr.vy += (ty - pr.vy) * cfg.ProjectileAimbot.strength;
+          }
+        }),
+        off: () => stop("ProjectileAimbot")
+      },
+
+
+      ArrowBypass: {
+        on: () => {
+          api.setFlag?.("arrowBypass", true);
+        },
+        off: () => {
+          api.setFlag?.("arrowBypass", false);
+          stop("ArrowBypass");
+        }
+      },
+
+      InstantBreak: {
+        on: () => loop("InstantBreak", 60, () => {
+          const p = api.player;
+          const bed = api.blueBed;
+
+          if (!alive(p) || !bed?.alive) return;
+          if (api.pointNearRect(p.x, p.y, bed, cfg.InstantBreak.range)) {
+            api.breakBed(bed, "red");
+          }
+        }),
+        off: () => stop("InstantBreak")
+      },
+
+      Speed: {
+        on: () => {
+          const p = api.player;
+          if (!p) return;
+
+          if (originals.speed == null) originals.speed = p.speed;
+          p.speed = originals.speed * cfg.Speed.multiplier;
+        },
+        off: () => {
+          const p = api.player;
+          if (p && originals.speed != null) p.speed = originals.speed;
+          originals.speed = null;
+        }
+      },
+
+      AntiDeath: {
+        on: () => loop("AntiDeath", 15, () => {
+          const p = api.player;
+          if (!p) return;
+
+          const bypassActive = !!api.flags?.antiCheatBypass;
+          if (!p.alive) {
+            if (!bypassActive && api.antiCheatEnabled) return;
+            api.safeRespawn(p);
+          }
+
+          if (!bypassActive && api.antiCheatEnabled && (p.hp || 0) <= cfg.AntiDeath.minHp) {
+            api.flagSuspicious?.("AntiDeath", "health save");
+            return;
+          }
+
+          p.hp = Math.max(p.hp || 1, cfg.AntiDeath.minHp);
+          p.invuln = Math.max(p.invuln || 0, cfg.AntiDeath.invuln);
+
+          if (api.groundCoverage(p) <= 0.001) {
+            if (!bypassActive && api.antiCheatEnabled) {
+              api.flagSuspicious?.("AntiDeath", "void save");
+              return;
+            }
+            const safe = api.nearestWalkableWorld(p.x, p.y, 8);
+            if (safe) {
+              api.teleportPlayer(safe.x, safe.y);
+              p.voidTime = 0;
+              api.syncAntiCheat?.(900);
+            } else {
+              api.safeRespawn(p);
+            }
+          }
+
+          if (cfg.AntiDeath.removeProjectiles) {
+            const arr = api.projectiles || [];
+            for (let i = arr.length - 1; i >= 0; i--) {
+              const pr = arr[i];
+              if (pr.team === "blue" && api.dist(pr.x, pr.y, p.x, p.y) <= cfg.AntiDeath.projectileRadius) {
+                arr.splice(i, 1);
+              }
+            }
+          }
+        }),
+        off: () => stop("AntiDeath")
+      },
+
+      InfiniteDash: {
+        on: () => loop("InfiniteDash", 20, () => {
+          const p = api.player;
+          if (p) p.dashCd = cfg.InfiniteDash.cooldown;
+        }),
+        off: () => stop("InfiniteDash")
+      },
+
+      NoBoundaries: {
+        on: () => {
+          api.setFlag?.("noBoundaries", true);
+          loop("NoBoundaries", 16, () => {
+            const p = api.player;
+            if (alive(p)) api.removeWorldBoundariesFor?.(p, cfg.NoBoundaries.push);
+          });
+        },
+        off: () => {
+          api.setFlag?.("noBoundaries", false);
+          stop("NoBoundaries");
+        }
+      },
+
+      AutoBuy: {
+        on: () => loop("AutoBuy", 450, () => {
+          const p = api.player;
+          if (!alive(p)) return;
+
+          if (p.armor < 1 && p.inv.gold >= 8 + cfg.AutoBuy.reserveGold) return api.buy("3", true);
+          if (p.sword < 1 && p.inv.iron >= 12 + cfg.AutoBuy.reserveIron) return api.buy("2", true);
+          if (p.blocks < cfg.AutoBuy.blocksAt && p.inv.iron >= 8 + cfg.AutoBuy.reserveIron) return api.buy("1", true);
+          if (p.pickaxe < 1 && p.inv.gold >= 4 + cfg.AutoBuy.reserveGold) return api.buy("4", true);
+          if (p.armor < 2 && p.inv.emerald >= 4) return api.buy("3", true);
+          if (p.sword < 2 && p.inv.gold >= 8 + cfg.AutoBuy.reserveGold) return api.buy("2", true);
+
+          if (cfg.AutoBuy.projectiles) {
+            if (!p.bow && p.inv.gold >= 8 + cfg.AutoBuy.reserveGold) return api.buy("5", true);
+            if (p.fireballs < 2 && p.inv.gold >= 6 + cfg.AutoBuy.reserveGold) return api.buy("6", true);
+          }
+
+          if (cfg.AutoBuy.upgrades) {
+            if (p.sharpness < 1 && p.inv.diamond >= 4) return api.buy("u1", true);
+            if (p.protection < 1 && p.inv.diamond >= 3) return api.buy("u2", true);
+            if (p.haste < 1 && p.inv.diamond >= 3) return api.buy("u3", true);
+          }
+        }),
+        off: () => stop("AutoBuy")
+      },
+
+      Breaker: {
+        on: () => loop("Breaker", () => cfg.Breaker.delay, () => {
+          const p = api.player;
+          const e = api.enemy;
+          const bed = api.blueBed;
+
+          if (!alive(p) || !bed?.alive) return;
+          if (cfg.Breaker.requirePickaxe && (p.pickaxe || 0) <= 0) return;
+          if (cfg.Breaker.stopNearEnemy && alive(e) && api.dist(p.x, p.y, e.x, e.y) < 100) return;
+
+          if (api.pointNearRect(p.x, p.y, bed, toggles.RemoveBreakLimits ? cfg.RemoveBreakLimits.range : cfg.Breaker.range)) {
+            const dmg = 1.8 + (p.pickaxe || 0) * 1.45 + (p.haste || 0) * 0.75 + (p.bedDamageBonus || 0);
+            bed.hp -= dmg;
+            api.floatText(`bed -${dmg.toFixed(1)}`, bed.x + bed.w / 2, bed.y - 10, "#b8d0ff");
+            if (bed.hp <= 0) api.breakBed(bed, "red");
+          }
+        }),
+        off: () => stop("Breaker")
+      },
+
+      InfiniteProjectiles: {
+        on: () => loop("InfiniteProjectiles", 60, () => {
+          const p = api.player;
+          if (!p) return;
+
+          p.bow = true;
+          if (cfg.InfiniteProjectiles.arrows) p.arrows = Math.max(p.arrows || 0, 999);
+          if (cfg.InfiniteProjectiles.fireballs) p.fireballs = Math.max(p.fireballs || 0, 99);
+          if (cfg.InfiniteProjectiles.tnt) p.tnt = Math.max(p.tnt || 0, 99);
+          if (cfg.InfiniteProjectiles.pearls) p.pearls = Math.max(p.pearls || 0, 25);
+        }),
+        off: () => stop("InfiniteProjectiles")
+      },
+
+      AutoWin: {
+        on: () => loop("AutoWin", () => cfg.AutoWin.delay, () => {
+          const p = api.player;
+          const e = api.enemy;
+          const bed = api.blueBed;
+
+          if (!alive(p)) return;
+
+          if (bed?.alive) {
+            api.teleportPlayer(bed.x + bed.w / 2, bed.y + bed.h / 2 + 42);
+            api.breakBed(bed, "red");
+            return;
+          }
+
+          if (alive(e)) {
+            api.teleportPlayer(e.x - 36, e.y);
+            api.damageEntity(e, cfg.AutoWin.instantKill ? 999 : 18, "red");
+            return;
+          }
+
+          if (cfg.AutoWin.returnBase) api.safeRespawn(p);
+        }),
+        off: () => stop("AutoWin")
+      },
+
+      ProjectileAura: {
+        on: () => loop("ProjectileAura", () => Math.max(0.05, Number(cfg.ProjectileAura.attackTime ?? (cfg.ProjectileAura.delay || 260) / 1000)) * 1000, () => {
+          const p = api.player;
+          const e = api.enemy;
+
+          if (!alive(p) || !alive(e)) return;
+          if (api.dist(p.x, p.y, e.x, e.y) > cfg.ProjectileAura.range) return;
+          if (toggles.ProjectileExploit) p.bowCd = 0;
+          if (cfg.ProjectileAura.requireLOS && !lineOfSight(p.x, p.y, e.x, e.y)) return;
+
+          if (cfg.ProjectileAura.useFireballs && p.fireballs > 0 && api.throwUtility) {
+            api.throwUtility(p, e.x, e.y, "fireball");
+          } else {
+            p.bow = true;
+            p.arrows = Math.max(p.arrows || 0, 2);
+            api.shootArrow(p, e.x, e.y, toggles.ProjectileExploit);
+          }
+        }),
+        off: () => stop("ProjectileAura")
+      },
+
+      DashExtender: {
+        on: () => {
+          const p = api.player;
+          if (!p) return;
+
+          if (originals.dashBonus == null) originals.dashBonus = p.dashBonus || 0;
+          p.dashBonus = cfg.DashExtender.multiplier;
+        },
+        off: () => {
+          const p = api.player;
+          if (p && originals.dashBonus != null) p.dashBonus = originals.dashBonus;
+          originals.dashBonus = null;
+        }
+      },
+
+      Magnet: {
+        on: () => loop("Magnet", 16, () => {
+          const p = api.player;
+          if (!alive(p)) return;
+
+          for (const r of api.resources || []) {
+            if (cfg.Magnet.types !== "all" && r.type !== cfg.Magnet.types) continue;
+
+            const d = api.dist(p.x, p.y, r.x, r.y);
+            if (d > cfg.Magnet.range) continue;
+
+            if (d <= cfg.Magnet.instantDistance) {
+              r.x = p.x;
+              r.y = p.y;
+              continue;
+            }
+
+            const dx = p.x - r.x;
+            const dy = p.y - r.y;
+            const len = Math.hypot(dx, dy) || 1;
+
+            r.x += dx / len * Math.min(cfg.Magnet.speed, d);
+            r.y += dy / len * Math.min(cfg.Magnet.speed, d);
+          }
+        }),
+        off: () => stop("Magnet")
+      }
+    };
+
+    /* ============================================================
+       LOOP HELPERS
+       Uses setTimeout instead of setInterval so a changed delay setting
+       can apply live without restarting the module.
+       ============================================================ */
+
+    function loop(name, delayOrFn, fn) {
+      stop(name);
+
+      const runner = () => {
+        try {
+          fn();
+        } catch (err) {
+          console.warn(`[AetherBeds v5] ${name} error:`, err);
+        }
+
+        const delay = typeof delayOrFn === "function" ? Number(delayOrFn()) : Number(delayOrFn);
+        loops.set(name, setTimeout(runner, Math.max(8, delay || 16)));
+      };
+
+      loops.set(name, setTimeout(runner, 0));
+    }
+
+    function stop(name) {
+      const id = loops.get(name);
+      if (id) clearTimeout(id);
+      loops.delete(name);
+    }
+
+    function setModule(name, enabled) {
+      const mod = modules[name];
+      if (!mod) return;
+      if (toggles[name] === !!enabled) return;
+
+      toggles[name] = !!enabled;
+
+      try {
+        enabled ? mod.on?.() : mod.off?.();
+      } catch (err) {
+        console.warn(`[AetherBeds v5] failed toggling ${name}:`, err);
+      }
+
+      updateGuiState(name);
+      notify(`${name}: ${enabled ? "ON" : "OFF"}`);
+    }
+
+    function toggleModule(name) {
+      setModule(name, !toggles[name]);
+    }
+
+    /* ============================================================
+       GAME UTILITY HELPERS
+       These keep the modules cleaner.
+       ============================================================ */
+
+    function alive(ent) {
+      return ent && ent.alive !== false;
+    }
+
+    function getReachDistance() {
+      const p = api.player;
+      let reach = cfg.Reach.distance;
+
+      if (cfg.Reach.dynamic && p) {
+        reach += Math.min(35, Math.hypot(p.vx || 0, p.vy || 0) * 0.045);
+      }
+
+      return toggles.Reach ? reach : cfg.KillAura.range;
+    }
+
+    function lineOfSight(x1, y1, x2, y2) {
+      const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 24);
+
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const x = x1 + (x2 - x1) * t;
+        const y = y1 + (y2 - y1) * t;
+        const tile = api.getTile(api.gx(x), api.gy(y));
+
+        if (tile === api.constants.STONE) return false;
+      }
+
+      return true;
+    }
+
+    function unlimitedPlace(event) {
+      if (!toggles.RemovePlacementLimits) return;
+
+      const canvas = document.getElementById("game");
+      if (!canvas || event.target !== canvas) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const p = api.player;
+      const m = api.mouse;
+      if (!p || !m) return;
+
+      if (!cfg.RemovePlacementLimits.consumeBlocks) {
+        p.blocks = Math.max(p.blocks || 0, 1);
+      }
+
+      api.forcePlaceBlockAt(m.worldX, m.worldY, "red", cfg.RemovePlacementLimits.consumeBlocks);
+    }
+
+    function notify(text) {
+      if (!cfg.global.notifications) return;
+      api.toast?.(text);
+    }
+
+    /* ============================================================
+       STORAGE
+       Saves settings and keybinds to localStorage.
+       ============================================================ */
+
+    function save() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ cfg, keybinds }));
+    }
+
+    function load() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function safeClone(obj) {
+      // Safari/file:// can throw DataCloneError on structuredClone.
+      // Settings are plain JSON values, so JSON cloning is safer here.
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    function deepMerge(target, source) {
+      for (const [key, value] of Object.entries(source || {})) {
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          target[key] = deepMerge(target[key] || {}, value);
+        } else {
+          target[key] = value;
+        }
+      }
+      return target;
+    }
+
+    /* ============================================================
+       GUI CREATION
+       Creates the full menu, categories, search bar, toggles, hover
+       tooltips, right-click settings, and keybind editor.
+       ============================================================ */
+
+    createGui();
+
+    function createGui() {
+      const style = document.createElement("style");
+      style.id = "abv5Style";
+      style.textContent = `
+        #abv5{
+          position:fixed;top:76px;right:18px;width:370px;max-height:78vh;z-index:999999;
+          color:#edf2ff;font-family:Inter,ui-sans-serif,system-ui;
+          background:linear-gradient(180deg,rgba(16,20,38,var(--op)),rgba(8,10,21,var(--op)));
+          border:1px solid rgba(255,255,255,.12);border-radius:20px;
+          box-shadow:0 24px 90px rgba(0,0,0,.55);backdrop-filter:blur(12px);overflow:hidden;
+          transform:scale(var(--scale));transform-origin:top right;
+          --accent:${cfg.global.accent};--scale:${cfg.global.guiScale};--op:${cfg.global.opacity};
+        }
+        #abv5Head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
+        #abv5Head b{color:var(--accent);letter-spacing:.08em;text-transform:uppercase;font-size:12px}
+        #abv5Head button{background:rgba(255,255,255,.08);color:white;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 9px;font-weight:900;cursor:pointer}
+        #abv5Search{width:calc(100% - 20px);margin:10px;background:rgba(255,255,255,.07);color:white;border:1px solid rgba(255,255,255,.11);border-radius:12px;padding:9px;outline:none}
+        #abv5Body{padding:0 10px 12px;overflow:auto;max-height:calc(78vh - 102px)}
+        .abCat{margin:10px 2px 6px;color:var(--accent);font-size:11px;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
+        .abMod{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0;padding:10px 11px;border-radius:14px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.09);cursor:pointer}
+        .abMod:hover{background:rgba(139,233,255,.09);border-color:rgba(139,233,255,.35)}
+        .abMod span{font-size:13px;font-weight:850}
+        .abKey{font-size:10px;color:#aab3cf;margin-left:6px;font-weight:800}
+        .abToggle{width:42px;height:22px;border-radius:999px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.12);padding:2px;flex:0 0 auto}
+        .abToggle:after{content:"";display:block;width:16px;height:16px;border-radius:50%;background:#aab3cf;transition:.12s}
+        .abMod.on{border-color:rgba(114,255,157,.45);background:rgba(114,255,157,.08)}
+        .abMod.on .abToggle:after{transform:translateX(18px);background:#72ff9d}
+        #abv5Settings{display:none;position:fixed;top:100px;right:405px;width:345px;max-height:78vh;overflow:auto;z-index:1000000;padding:14px;color:#edf2ff;font-family:Inter,ui-sans-serif,system-ui;background:rgba(8,10,21,.97);border:1px solid rgba(255,255,255,.14);border-radius:18px;box-shadow:0 20px 80px rgba(0,0,0,.55)}
+        #abv5Settings h3{margin:0 0 10px;color:var(--accent,#8be9ff);font-size:15px}
+        #abv5Settings label{display:block;margin:9px 0 4px;color:#aab3cf;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}
+        #abv5Settings input,#abv5Settings select,#abv5Settings button{width:100%;background:rgba(255,255,255,.08);color:white;border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:8px;outline:none}
+        #abv5Settings input[type="checkbox"]{width:auto;margin-right:7px}
+        .abBind{margin-top:10px;background:rgba(139,233,255,.1)!important;border-color:rgba(139,233,255,.35)!important;font-weight:900;cursor:pointer}
+        #abv5Tip{position:fixed;z-index:1000001;display:none;max-width:260px;padding:8px 10px;border-radius:12px;background:rgba(5,8,18,.94);border:1px solid rgba(139,233,255,.28);color:#edf2ff;font-size:12px;pointer-events:none}
+      `;
+      document.head.appendChild(style);
+
+      const menu = document.createElement("div");
+      menu.id = "abv5";
+      menu.innerHTML = `
+        <div id="abv5Head">
+          <b>AetherCore Private v5.2.2</b>
+          <button id="abv5Hide">Hide</button>
+        </div>
+        <input id="abv5Search" placeholder="Search modules..." />
+        <div id="abv5Body"></div>
+      `;
+      document.body.appendChild(menu);
+
+      const body = menu.querySelector("#abv5Body");
+
+      for (const [category, names] of Object.entries(categories)) {
+        const cat = document.createElement("div");
+        cat.className = "abCat";
+        cat.textContent = category;
+        body.appendChild(cat);
+
+        for (const name of names) {
+          const row = document.createElement("div");
+          row.className = "abMod";
+          row.dataset.name = name;
+          row.dataset.search = `${name} ${category} ${descriptions[name]}`.toLowerCase();
+          row.innerHTML = `<span>${name}<span class="abKey">${formatKey(keybinds[name])}</span></span><div class="abToggle"></div>`;
+
+          row.addEventListener("click", () => toggleModule(name));
+          row.addEventListener("contextmenu", event => {
+            event.preventDefault();
+            openSettings(name);
+          });
+          row.addEventListener("mouseenter", event => showTip(event, descriptions[name]));
+          row.addEventListener("mousemove", showTip);
+          row.addEventListener("mouseleave", hideTip);
+
+          body.appendChild(row);
+        }
+      }
+
+      const settings = document.createElement("div");
+      settings.id = "abv5Settings";
+      document.body.appendChild(settings);
+
+      const tip = document.createElement("div");
+      tip.id = "abv5Tip";
+      document.body.appendChild(tip);
+
+      menu.querySelector("#abv5Hide").onclick = () => {
+        menu.style.display = "none";
+        settings.style.display = "none";
+      };
+
+      menu.querySelector("#abv5Search").addEventListener("input", event => {
+        const q = event.target.value.toLowerCase().trim();
+        document.querySelectorAll(".abMod").forEach(row => {
+          row.style.display = row.dataset.search.includes(q) ? "flex" : "none";
+        });
+      });
+
+      document.addEventListener("keydown", event => {
+        if (isTyping(event.target)) return;
+
+        if (event.code === cfg.global.menuKey || event.code === "ShiftRight" || event.key === "`") {
+          menu.style.display = menu.style.display === "none" ? "block" : "none";
+          return;
+        }
+
+        for (const [name, code] of Object.entries(keybinds)) {
+          if (code && event.code === code && !event.repeat) toggleModule(name);
+        }
+      });
+
+      updateAllGui();
+    }
+
+    function openSettings(name) {
+      const box = document.getElementById("abv5Settings");
+      const obj = name === "Global" ? cfg.global : cfg[name];
+
+      box.style.setProperty("--accent", cfg.global.accent);
+      box.innerHTML = `
+        <h3>${name} Settings</h3>
+        ${renderFields(name, obj)}
+        <label>Custom Keybind</label>
+        <button class="abBind" id="bindBtn">Current: ${formatKey(keybinds[name]) || "None"} — click to change</button>
+        <button class="abBind" id="resetBtn">Reset this module settings</button>
+      `;
+
+      box.style.display = "block";
+
+      box.querySelectorAll("[data-cfg]").forEach(input => {
+        input.addEventListener("input", () => {
+          const key = input.dataset.cfg;
+          let value;
+
+          if (input.type === "checkbox") value = input.checked;
+          else if (input.type === "number" || input.type === "range") value = Number(input.value);
+          else value = input.value;
+
+          cfg[name][key] = value;
+          save();
+          applyLiveSetting(name);
+        });
+      });
+
+      box.querySelector("#bindBtn").onclick = () => {
+        const btn = box.querySelector("#bindBtn");
+        btn.textContent = "Press a key... Escape clears";
+
+        const listener = event => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          keybinds[name] = event.code === "Escape" ? "" : event.code;
+          save();
+          updateAllGui();
+
+          btn.textContent = `Current: ${formatKey(keybinds[name]) || "None"} — click to change`;
+          document.removeEventListener("keydown", listener, true);
+        };
+
+        document.addEventListener("keydown", listener, true);
+      };
+
+      box.querySelector("#resetBtn").onclick = () => {
+        cfg[name] = safeClone(defaults[name]);
+        save();
+        openSettings(name);
+      };
+    }
+
+    function renderFields(name, obj) {
+      return Object.entries(obj).map(([key, value]) => {
+        const label = key.replace(/([A-Z])/g, " $1");
+
+        if (typeof value === "boolean") {
+          return `<label><input data-cfg="${key}" type="checkbox" ${value ? "checked" : ""}> ${label}</label>`;
+        }
+
+        if (typeof value === "number") {
+          const step = Number.isInteger(value) ? "1" : "0.05";
+          return `<label>${label}</label><input data-cfg="${key}" type="number" step="${step}" value="${value}">`;
+        }
+
+        if (key === "type") {
+          return `<label>${label}</label><select data-cfg="${key}">
+            ${["iron", "gold", "diamond", "emerald"].map(x => `<option ${x === value ? "selected" : ""}>${x}</option>`).join("")}
+          </select>`;
+        }
+
+        if (key === "target") {
+          return `<label>${label}</label><select data-cfg="${key}">
+            ${[["red","Your Base"],["blue","Enemy Base"],["mid","Mid/Diamonds"],["all","All"]].map(([v,t]) => `<option value="${v}" ${v === value ? "selected" : ""}>${t}</option>`).join("")}
+          </select>`;
+        }
+
+        if (key === "spawn") {
+          return `<label>${label}</label><select data-cfg="${key}">
+            ${["base", "current"].map(x => `<option ${x === value ? "selected" : ""}>${x}</option>`).join("")}
+          </select>`;
+        }
+
+        if (key === "types") {
+          return `<label>${label}</label><select data-cfg="${key}">
+            ${["all", "iron", "gold", "diamond", "emerald"].map(x => `<option ${x === value ? "selected" : ""}>${x}</option>`).join("")}
+          </select>`;
+        }
+
+        return `<label>${label}</label><input data-cfg="${key}" value="${String(value)}">`;
+      }).join("");
+    }
+
+    function applyLiveSetting(name) {
+      save();
+
+      if (name === "Speed" && toggles.Speed) {
+        modules.Speed.off();
+        modules.Speed.on();
+      }
+
+      if (name === "DashExtender" && toggles.DashExtender) {
+        modules.DashExtender.off();
+        modules.DashExtender.on();
+      }
+
+      const menu = document.getElementById("abv5");
+      if (menu) {
+        menu.style.setProperty("--accent", cfg.global.accent);
+        menu.style.setProperty("--scale", cfg.global.guiScale);
+        menu.style.setProperty("--op", cfg.global.opacity);
+      }
+    }
+
+    function updateGuiState(name) {
+      const row = document.querySelector(`.abMod[data-name="${CSS.escape(name)}"]`);
+      if (!row) return;
+
+      row.classList.toggle("on", !!toggles[name]);
+
+      const key = row.querySelector(".abKey");
+      if (key) key.textContent = formatKey(keybinds[name]);
+    }
+
+    function updateAllGui() {
+      for (const name of Object.keys(modules)) updateGuiState(name);
+    }
+
+    function formatKey(code) {
+      if (!code) return "";
+      return code.replace("Key", "").replace("Digit", "").replace("Arrow", "");
+    }
+
+    function showTip(event, text) {
+      const tip = document.getElementById("abv5Tip");
+      if (!tip) return;
+
+      if (typeof text === "string") tip.textContent = text;
+
+      tip.style.display = "block";
+      tip.style.left = `${Math.max(8, (event.clientX || 0) - 270)}px`;
+      tip.style.top = `${(event.clientY || 0) + 14}px`;
+    }
+
+    function hideTip() {
+      const tip = document.getElementById("abv5Tip");
+      if (tip) tip.style.display = "none";
+    }
+
+    function isTyping(el) {
+      return el && ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(el.tagName);
+    }
+
+    /* ============================================================
+       VISUAL OVERLAY LOOP
+       Used by Reach and SafeWalk to draw helpful rings/indicators.
+       ============================================================ */
+
+    let drawing = false;
+    let raf = 0;
+
+    function drawLoopOn() {
+      if (drawing) return;
+
+      drawing = true;
+      const canvas = document.getElementById("game");
+      const ctx = canvas?.getContext("2d");
+
+      const tick = () => {
+        if (!drawing) return;
+        raf = requestAnimationFrame(tick);
+
+        if (!ctx || !api.player) return;
+
+        const p = api.player;
+        const m = api.mouse;
+
+        // Convert world position to approximate screen position.
+        const sx = p.x - (m.worldX - m.x);
+        const sy = p.y - (m.worldY - m.y);
+
+        ctx.save();
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.38;
+
+        if (toggles.Reach && cfg.Reach.showCircle) {
+          ctx.strokeStyle = cfg.global.accent;
+          ctx.beginPath();
+          ctx.arc(sx, sy, getReachDistance(), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        if (toggles.SafeWalk && cfg.SafeWalk.highlight) {
+          const lx = sx + (p.vx || 0) * 0.16;
+          const ly = sy + (p.vy || 0) * 0.16;
+
+          ctx.strokeStyle = "#ff5f78";
+          ctx.beginPath();
+          ctx.arc(lx, ly, 18, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      };
+
+      tick();
+    }
+
+    function drawLoopMaybeOff() {
+      if (toggles.Reach || toggles.SafeWalk) return;
+
+      drawing = false;
+      if (raf) cancelAnimationFrame(raf);
+    }
+
+    /* ============================================================
+       PUBLIC DEBUG OBJECT
+       Lets you manually toggle from console, for example:
+       AetherBedsMenuV5.toggleModule("KillAura")
+       ============================================================ */
+
+    window.AetherBedsMenuV5 = {
+      api,
+      cfg,
+      keybinds,
+      toggles,
+      modules,
+      setModule,
+      toggleModule,
+
+      cleanup() {
+        for (const name of Object.keys(modules)) {
+          if (toggles[name]) setModule(name, false);
+        }
+
+        document.getElementById("abv5")?.remove();
+        document.getElementById("abv5Settings")?.remove();
+        document.getElementById("abv5Tip")?.remove();
+        document.getElementById("abv5Style")?.remove();
+
+        window.__AETHERBEDS_PRIVATE_MENU_V5__ = false;
+      }
+    };
+
+    console.log("[AetherBeds] Private Mod Menu v5 loaded. Press Insert or ~ to hide/show.");
+  }
+})();
+
+</script>
+
+
+<script>
+/* v5.2 fallback: Right Shift toggles the mod GUI even if the userscript key handler misses it. */
+(() => {
+  document.addEventListener("keydown", (event) => {
+    if (event.code !== "ShiftRight" || event.repeat) return;
+    const menu = document.getElementById("abv5") || document.getElementById("abv4") || document.querySelector('[id^="abv"][id$=""]');
+    const settings = document.getElementById("abv5Settings") || document.getElementById("abv4Settings");
+    const actualMenu = document.getElementById("abv5") || document.getElementById("abv4");
+    if (!actualMenu) return;
+    actualMenu.style.display = actualMenu.style.display === "none" ? "block" : "none";
+    if (settings && actualMenu.style.display === "none") settings.style.display = "none";
+  }, true);
+})();
+</script>
+
+
+<script>
+/* v5.2 settings close fixes:
+   - Adds a close button to module settings panels.
+   - Escape closes settings.
+   - Clicking outside the settings panel closes it.
+*/
+(() => {
+  function getSettings() {
+    return document.getElementById("abv5Settings") || document.getElementById("abv4Settings");
+  }
+  function ensureCloseButton() {
+    const box = getSettings();
+    if (!box || box.dataset.v51CloseReady) return;
+    box.dataset.v51CloseReady = "1";
+    const btn = document.createElement("button");
+    btn.id = "abSettingsClose";
+    btn.textContent = "×";
+    btn.title = "Close settings";
+    btn.style.cssText = "position:sticky;top:0;float:right;width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:white;font-size:20px;font-weight:900;cursor:pointer;z-index:2";
+    btn.onclick = () => { box.style.display = "none"; };
+    box.prepend(btn);
+  }
+
+  const observer = new MutationObserver(() => ensureCloseButton());
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const box = getSettings();
+    if (box) box.style.display = "none";
+  }, true);
+
+  document.addEventListener("mousedown", (event) => {
+    const box = getSettings();
+    const menu = document.getElementById("abv5") || document.getElementById("abv4");
+    if (!box || box.style.display === "none") return;
+    if (box.contains(event.target)) return;
+    if (menu && menu.contains(event.target)) return;
+    box.style.display = "none";
+  }, true);
+})();
+</script>
+
+
+<style>
+#abv5Body, #abv5Settings {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139,233,255,.55) rgba(255,255,255,.03);
+}
+#abv5Body::-webkit-scrollbar, #abv5Settings::-webkit-scrollbar { width: 8px; }
+#abv5Body::-webkit-scrollbar-track, #abv5Settings::-webkit-scrollbar-track {
+  background: rgba(255,255,255,.03);
+  border-radius: 999px;
+  margin: 10px 0;
+}
+#abv5Body::-webkit-scrollbar-thumb, #abv5Settings::-webkit-scrollbar-thumb {
+  background: rgba(139,233,255,.55);
+  border-radius: 999px;
+  border: 2px solid rgba(8,10,21,.95);
+}
+#abv5Body::-webkit-scrollbar-thumb:hover, #abv5Settings::-webkit-scrollbar-thumb:hover {
+  background: rgba(139,233,255,.9);
+}
+</style>
+
+<script>
+(() => {
+  const ACTIVE_STORE = "AetherBedsPrivateMenuV5_ActiveModules";
+  const wait = setInterval(() => {
+    const menu = window.AetherBedsMenuV5;
+    const api = window.AetherBedsModAPI;
+    if (!menu || !api) return;
+    clearInterval(wait);
+    patch(menu, api);
+  }, 100);
+
+  function patch(menu, api) {
+    window.addEventListener("keydown", (event) => {
+      if (event.repeat) return;
+      if (!(event.code === "ShiftRight" || (event.key === "Shift" && event.location === 2))) return;
+      const gui = document.getElementById("abv5") || document.getElementById("abv4");
+      const settings = document.getElementById("abv5Settings") || document.getElementById("abv4Settings");
+      if (!gui) return;
+      gui.style.display = gui.style.display === "none" ? "block" : "none";
+      if (settings && gui.style.display === "none") settings.style.display = "none";
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
+
+    setInterval(() => {
+      const settings = document.getElementById("abv5Settings") || document.getElementById("abv4Settings");
+      if (!settings) return;
+      if (!settings.querySelector("#abCloseSettings")) {
+        const btn = document.createElement("button");
+        btn.id = "abCloseSettings";
+        btn.textContent = "×";
+        btn.title = "Close settings";
+        btn.style.cssText = "position:sticky;top:0;float:right;width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.10);color:white;font-size:20px;font-weight:900;cursor:pointer;z-index:9";
+        btn.onclick = () => settings.style.display = "none";
+        settings.prepend(btn);
+      }
+    }, 250);
+
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") {
+        const settings = document.getElementById("abv5Settings") || document.getElementById("abv4Settings");
+        if (settings) settings.style.display = "none";
+      }
+    }, true);
+
+    document.addEventListener("mousedown", e => {
+      const settings = document.getElementById("abv5Settings") || document.getElementById("abv4Settings");
+      const gui = document.getElementById("abv5") || document.getElementById("abv4");
+      if (!settings || settings.style.display === "none") return;
+      if (settings.contains(e.target)) return;
+      if (gui && gui.contains(e.target)) return;
+      settings.style.display = "none";
+    }, true);
+
+    const rawSet = menu.setModule;
+    menu.setModule = (name, enabled) => {
+      rawSet(name, enabled);
+      saveActive(menu);
+    };
+    const rawToggle = menu.toggleModule;
+    menu.toggleModule = (name) => {
+      rawToggle(name);
+      saveActive(menu);
+    };
+
+    document.addEventListener("click", e => {
+      const row = e.target.closest?.(".abMod");
+      if (!row?.dataset?.name) return;
+      e.stopImmediatePropagation();
+      menu.toggleModule(row.dataset.name);
+    }, true);
+
+    setTimeout(() => {
+      const active = JSON.parse(localStorage.getItem(ACTIVE_STORE) || "[]");
+      for (const name of active) {
+        if (menu.modules[name]) menu.setModule(name, true);
+      }
+    }, 400);
+
+    const buyNames = {
+      "1": "Wool Bundle", "2": "Sword Upgrade", "3": "Armor Upgrade", "4": "Pickaxe Upgrade",
+      "5": "Bow / Arrows", "6": "Fireball", "7": "TNT", "8": "Golden Apple", "9": "Speed Boots",
+      "0": "Ender Pearl", "gapple": "Gapple Pack", "blockpack": "Bridge Pack",
+      "u1": "Sharpness", "u2": "Protection", "u3": "Haste", "u4": "Forge", "u5": "Heal Pool", "u6": "Alarm Trap"
+    };
+    const rawBuy = api.buy;
+    api.buy = (slot) => {
+      const p = api.player;
+      const before = p ? JSON.stringify({
+        inv: p.inv, sword: p.sword, armor: p.armor, pickaxe: p.pickaxe, blocks: p.blocks,
+        bow: p.bow, arrows: p.arrows, fireballs: p.fireballs, tnt: p.tnt, pearls: p.pearls,
+        sharpness: p.sharpness, protection: p.protection, haste: p.haste, forge: p.forge
+      }) : "";
+      const result = rawBuy(slot);
+      const after = p ? JSON.stringify({
+        inv: p.inv, sword: p.sword, armor: p.armor, pickaxe: p.pickaxe, blocks: p.blocks,
+        bow: p.bow, arrows: p.arrows, fireballs: p.fireballs, tnt: p.tnt, pearls: p.pearls,
+        sharpness: p.sharpness, protection: p.protection, haste: p.haste, forge: p.forge
+      }) : "";
+      if (menu.toggles.AutoBuy && before !== after) api.toast?.(`AutoBuy bought: ${buyNames[String(slot)] || slot}`);
+      return result;
+    };
+
+    setInterval(() => {
+      const p = api.player;
+      if (!menu.toggles.AntiVoid || !p || !p.alive) return;
+      const tx = api.gx(p.x);
+      const ty = api.gy(p.y);
+      const place = (x, y) => {
+        if (!api.inBounds?.(x, y)) return;
+        if (api.getTile(x, y) === api.constants.VOID) api.setTile(x, y, api.constants.RED_BLOCK);
+      };
+      place(tx, ty);
+      place(tx + Math.sign(p.vx || 0), ty);
+      place(tx, ty + Math.sign(p.vy || 0));
+      p.invuln = Math.max(p.invuln || 0, menu.cfg.AntiVoid?.invuln || 0.8);
+    }, 12);
+
+    setInterval(() => {
+      const p = api.player;
+      if (!menu.toggles.AlwaysRespawn || !p) return;
+      const overlay = document.getElementById("centerOverlay");
+      const card = document.getElementById("centerCard");
+      if (!p.alive || p.hp <= 0 || api.state === "gameover" || (overlay && overlay.style.display === "grid")) {
+        api.state = "playing";
+        if (overlay) overlay.style.display = "none";
+        if (card && /Victory|Defeat/.test(card.textContent || "")) card.innerHTML = "";
+        api.safeRespawn(p, menu.cfg.AlwaysRespawn?.spawn || "base");
+        p.invuln = Math.max(p.invuln || 0, menu.cfg.AlwaysRespawn?.invuln || 1.5);
+      }
+    }, 20);
+
+    window.addEventListener("mousedown", event => {
+      if (event.button !== 0 || !menu.toggles.Reach) return;
+      const p = api.player, e = api.enemy;
+      if (!p || !e || !p.alive || !e.alive) return;
+      const range = menu.cfg.Reach?.distance || 145;
+      if (api.dist(p.x, p.y, e.x, e.y) > range + e.r) return;
+      const dmg = 5 + (p.sword || 0) * 2.2 + (p.sharpness || 0) * 1.25;
+      api.damageEntity(e, dmg, "red");
+      api.attackSwings?.push?.({ x: p.x, y: p.y, angle: Math.atan2(e.y - p.y, e.x - p.x), life: 0.16, max: 0.16, team: "red" });
+      api.floatText?.("reach hit", e.x, e.y - 42, "#8be9ff");
+    }, true);
+
+    setInterval(() => {
+      const p = api.player;
+      if (!p) return;
+      if (menu.toggles.DashExtender) p.dashBonus = menu.cfg.DashExtender?.multiplier || 2.2;
+    }, 50);
+
+    window.addEventListener("keydown", event => {
+      if (event.code !== "Space" || event.repeat) return;
+      if (!menu.toggles.DashExtender && !menu.toggles.InfiniteDash) return;
+      const p = api.player;
+      if (!p || !p.alive || api.state !== "playing") return;
+      let dx = 0, dy = 0;
+      const keys = api.keys;
+      if (keys?.has("w") || keys?.has("arrowup")) dy--;
+      if (keys?.has("s") || keys?.has("arrowdown")) dy++;
+      if (keys?.has("a") || keys?.has("arrowleft")) dx--;
+      if (keys?.has("d") || keys?.has("arrowright")) dx++;
+      if (dx === 0 && dy === 0) {
+        dx = api.mouse.worldX - p.x;
+        dy = api.mouse.worldY - p.y;
+      }
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len; dy /= len;
+      const mult = menu.toggles.DashExtender ? (menu.cfg.DashExtender?.multiplier || 2.2) : (p.dashBonus || 0);
+      const currentForward = Math.max(0, (p.vx || 0) * dx + (p.vy || 0) * dy);
+      const power = 2100 + mult * 620 + Math.min(820, currentForward * 0.9);
+      if ((p.dashCd || 0) <= 0 || menu.toggles.InfiniteDash) {
+        p.vx = dx * power;
+        p.vy = dy * power;
+        p.dashTime = 0.34 + Math.min(0.22, mult * 0.035);
+        p.invuln = Math.max(p.invuln || 0, 0.75);
+        if (!menu.toggles.InfiniteDash) p.dashCd = 0.58;
+      }
+    }, true);
+  }
+
+  function saveActive(menu) {
+    const active = Object.entries(menu.toggles).filter(([, enabled]) => enabled).map(([name]) => name);
+    localStorage.setItem(ACTIVE_STORE, JSON.stringify(active));
+  }
+})();
+</script>
+
+
+
+<style>
+/* v5.3.3 battlepass: full horizontal progression screen */
+#abBattleBtn{
+  position:fixed;left:12px;top:142px;z-index:99990;border:1px solid rgba(139,233,255,.35);
+  background:rgba(8,10,21,.88);color:#edf2ff;border-radius:14px;padding:10px 13px;font-weight:950;
+  cursor:pointer;box-shadow:0 12px 35px rgba(0,0,0,.35);backdrop-filter:blur(10px);
+}
+#abBattleBtn small{display:block;color:#aab3cf;font-size:10px;font-weight:800;margin-top:2px}
+#abBattlePanel{
+  position:fixed;inset:0;display:none;z-index:99991;background:rgba(0,0,0,.58);
+  color:#edf2ff;font-family:Inter,system-ui,sans-serif;backdrop-filter:blur(7px);
+}
+#abBattleCard{
+  position:absolute;inset:28px;display:flex;flex-direction:column;gap:14px;min-width:0;
+  border-radius:26px;background:linear-gradient(180deg,rgba(16,20,38,.985),rgba(8,10,21,.985));
+  border:1px solid rgba(255,255,255,.14);box-shadow:0 24px 90px rgba(0,0,0,.58);padding:20px;overflow:hidden;
+}
+.abBpTop{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.abBpTitle h2{margin:0;color:#8be9ff;font-size:clamp(30px,4vw,52px);letter-spacing:-.045em}
+.abBpTitle p{margin:5px 0 0;color:#aab3cf}
+.abBpActions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+#abBattleCard button{
+  border:0;border-radius:13px;padding:10px 14px;font-weight:950;cursor:pointer;
+  background:linear-gradient(135deg,#8be9ff,#b8fff2);color:#061018;
+}
+#abBattleCard button.secondary{background:rgba(255,255,255,.08);color:white;border:1px solid rgba(255,255,255,.12)}
+#abBattleCard button.acToggle{display:inline-flex;align-items:center;gap:9px}
+#abBattleCard button.acToggle .pill{width:40px;height:22px;border-radius:999px;background:rgba(255,95,120,.35);border:1px solid rgba(255,255,255,.16);position:relative;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
+#abBattleCard button.acToggle .pill:after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#ff5f78;transition:transform .18s ease,background .18s ease}
+#abBattleCard button.acToggle.on .pill{background:rgba(114,255,157,.22);border-color:rgba(114,255,157,.45)}
+#abBattleCard button.acToggle.on .pill:after{transform:translateX(18px);background:#72ff9d}
+#abBattleCard button.gold{background:linear-gradient(135deg,#ffd166,#fff0a8);color:#171006}
+.abBpStats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.abBpStat{padding:12px;border-radius:16px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.09)}
+.abBpStat b{display:block;font-size:18px;color:white}.abBpStat span{color:#aab3cf;font-size:12px;font-weight:800}
+.abBpProgressWrap{padding:13px;border-radius:18px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09)}
+.abBpProgressTop{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;color:#aab3cf;font-weight:850}
+.abBpProgress{height:16px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+.abBpProgress > div{height:100%;width:0%;background:linear-gradient(90deg,#8be9ff,#72ff9d,#ffd166);border-radius:999px;transition:width .25s ease}
+.abBpTrackShell{min-height:0;flex:1;display:flex;flex-direction:column;gap:10px}
+.abBpLaneLabels{display:grid;grid-template-columns:92px 1fr;gap:8px;color:#aab3cf;font-weight:950;font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.abBpTrack{
+  flex:1;min-height:330px;overflow-x:auto;overflow-y:hidden;display:flex;gap:12px;padding:6px 4px 14px;
+  scroll-snap-type:x proximity;scrollbar-width:thin;scrollbar-color:rgba(139,233,255,.85) rgba(255,255,255,.045);
+}
+.abBpTrack::-webkit-scrollbar{height:12px}
+.abBpTrack::-webkit-scrollbar-track{background:rgba(255,255,255,.045);border-radius:999px}
+.abBpTrack::-webkit-scrollbar-thumb{background:linear-gradient(90deg,rgba(139,233,255,.9),rgba(184,255,242,.65));border-radius:999px;border:3px solid rgba(8,10,21,.92)}
+.abBpTier{
+  flex:0 0 184px;scroll-snap-align:start;display:grid;grid-template-rows:auto 1fr 1fr;gap:8px;
+  border-radius:20px;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.095);
+  position:relative;overflow:hidden;
+}
+.abBpTier.unlocked{border-color:rgba(114,255,157,.35);background:linear-gradient(180deg,rgba(114,255,157,.10),rgba(255,255,255,.045))}
+.abBpTier.current{box-shadow:0 0 0 2px rgba(139,233,255,.55),0 18px 50px rgba(139,233,255,.12)}
+.abBpTier.proOwned .abReward.pro{border-color:rgba(255,209,102,.42)}
+.abTierHead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.abTierHead b{font-size:18px;color:white}.abTierHead span{font-size:11px;color:#aab3cf;font-weight:950}
+.abReward{border-radius:15px;padding:10px;min-height:118px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;justify-content:space-between;gap:8px}
+.abReward.free{border-color:rgba(114,255,157,.2)}.abReward.pro{border-color:rgba(255,209,102,.2)}
+.abRewardIcon{font-size:26px}.abRewardName{font-weight:950;color:white}.abRewardLane{font-size:11px;color:#aab3cf;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
+.abRewardState{font-size:12px;font-weight:950}.abRewardState.locked{color:#ff5f78}.abRewardState.done{color:#72ff9d}.abRewardState.pro{color:#ffd166}
+.abBpFooter{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;color:#aab3cf;font-size:12px}
+.abBpToast{color:#72ff9d;font-weight:950}
+@media(max-width:760px){
+  #abBattleCard{inset:10px;padding:14px;border-radius:20px}
+  .abBpStats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .abBpTier{flex-basis:166px}
+}
+</style>
+<script>
+(() => {
+  const KEY = 'AetherBedsBattlepassV53';
+  const SEASON = 'Season 1: Void Rush';
+  const TIERS = 30;
+  const XP_PER = 120;
+  const PRO_COST = 5;
+  const freeRewards = [
+    ['🧱','Wool Banner'],['⚔️','Stone Tag'],['💨','Bridge Trail'],['💎','Diamond Ping'],['😎','Rush Emote'],
+    ['🟢','Emerald Glow'],['🕳️','Void Charm'],['🔥','Combo Text'],['🛡️','Bed Badge'],['✨','Victory Spark'],
+    ['🟡','Gold Frame'],['🌀','Pearl Pop'],['☄️','Fireball Smoke'],['🏷️','Shop Tag'],['🏰','Defender Icon'],
+    ['⛏️','Haste Pulse'],['🔪','Sharp Shine'],['🧊','Clutch Title'],['💥','Final Burst'],['👑','Aether Champ'],
+    ['🪙','Coin Spray'],['🧭','Mid Marker'],['🎯','Aim Ring'],['🌉','Bridge Badge+'],['🧨','TNT Boom'],
+    ['🛏️','Bed Break FX'],['⚡','Speed Lines'],['🧬','Neon Trail'],['🏆','Win Pose'],['🌌','Void Crown']
+  ];
+  const proRewards = [
+    ['⭐','PRO Tag'],['🌊','Cyan Trail'],['🎴','Premium Banner'],['🤖','Bot Slayer'],['🧱','Luxury Blocks'],
+    ['💫','Animated Glow'],['☄️','Meteor Balls'],['🖼️','Royal Frame'],['🕳️','Void Walker'],['✌️','XP Token'],
+    ['🐉','Dragon Pearl'],['🛏️','Golden Bed'],['💢','Mythic Hit FX'],['🥵','Sweat Badge'],['🛡️','Armor Aura'],
+    ['🎯','God Hunter'],['🌈','Chroma Trail'],['🔱','Prestige Border'],['👑','Victory Crown'],['💠','AetherCore PRO'],
+    ['🪐','Orbit Trail'],['🏹','Bow Flare'],['🧪','Emerald Splash'],['🐺','Final Howl'],['🚀','Launch Dash'],
+    ['⚜️','Elite Plate'],['🧲','Magnet Pulse'],['🦾','Cyber Armor'],['🎆','Win Fireworks'],['🌠','Mythic Core']
+  ];
+
+  let renderTimer = 0;
+  let activeGame = null;
+
+  function data() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; }
+    catch { return {}; }
+  }
+  function save(d) {
+    d.updatedAt = Date.now();
+    localStorage.setItem(KEY, JSON.stringify(d));
+    scheduleRender();
+  }
+  function norm(d) {
+    d.xp = Number(d.xp || 0);
+    d.wins = Number(d.wins || 0);
+    d.games = Number(d.games || 0);
+    d.pro = !!d.pro;
+    d.antiCheatEnabled = d.pro ? d.antiCheatEnabled !== false : true;
+    d.lastAward = d.lastAward || null;
+    d.claimedFree = Array.isArray(d.claimedFree) ? d.claimedFree : [];
+    d.claimedPro = Array.isArray(d.claimedPro) ? d.claimedPro : [];
+    return d;
+  }
+  function tier(d) { return Math.min(TIERS, Math.floor((d.xp || 0) / XP_PER)); }
+  function tierProgress(d) {
+    if (tier(d) >= TIERS) return 100;
+    return Math.round(((d.xp % XP_PER) / XP_PER) * 100);
+  }
+  function xpToNext(d) {
+    if (tier(d) >= TIERS) return 0;
+    return XP_PER - (d.xp % XP_PER);
+  }
+  function awardAmount(win, stats = {}) {
+    const seconds = Math.max(0, Number(stats.seconds || 0));
+    const playXp = Math.min(90, Math.round(seconds / 12));
+    const bedXp = Math.min(80, Number(stats.bedBreaks || 0) * 70);
+    const finalXp = Math.min(90, Number(stats.finalKills || 0) * 90);
+    const killXp = Math.min(80, Number(stats.kills || 0) * 22);
+    return (win ? 155 : 55) + playXp + bedXp + finalXp + killXp;
+  }
+  function ensureButton() {
+    let btn = document.getElementById('abBattleBtn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'abBattleBtn';
+      btn.type = 'button';
+      btn.onclick = () => { render(); const p = ensurePanel(); p.style.display = 'block'; };
+      document.body.appendChild(btn);
+    }
+    return btn;
+  }
+  function ensurePanel() {
+    let p = document.getElementById('abBattlePanel');
+    if (!p) {
+      p = document.createElement('div');
+      p.id = 'abBattlePanel';
+      p.innerHTML = '<div id="abBattleCard"></div>';
+      p.addEventListener('mousedown', e => { if (e.target === p) p.style.display = 'none'; });
+      document.body.appendChild(p);
+    }
+    return p;
+  }
+  function rewardCard(kind, reward, unlocked, proOwned) {
+    const lockedText = kind === 'pro' && !proOwned ? 'Needs PRO' : 'Locked';
+    const state = unlocked && (kind === 'free' || proOwned);
+    return `<div class="abReward ${kind}">
+      <div><div class="abRewardLane">${kind === 'free' ? 'Free' : 'PRO'}</div><div class="abRewardIcon">${reward[0]}</div></div>
+      <div><div class="abRewardName">${escape(reward[1])}</div><div class="abRewardState ${state ? (kind === 'pro' ? 'pro' : 'done') : 'locked'}">${state ? 'Unlocked' : lockedText}</div></div>
+    </div>`;
+  }
+  function render() {
+    const p = ensurePanel();
+    const c = p.querySelector('#abBattleCard');
+    const d = norm(data());
+    const t = tier(d);
+    const pct = tierProgress(d);
+    const last = d.lastAward;
+    const antiCheatOn = d.pro ? d.antiCheatEnabled !== false : true;
+    window.AetherBedsModAPI?.toggleAntiCheat?.(antiCheatOn, { pro: d.pro, silent: true });
+    const btn = ensureButton();
+    btn.innerHTML = `Battle Pass<small>T${t}/${TIERS} · ${d.xp} XP</small>`;
+
+    let track = '';
+    for (let i = 1; i <= TIERS; i++) {
+      const unlocked = i <= t;
+      const current = i === Math.min(TIERS, t + 1);
+      track += `<div class="abBpTier ${unlocked ? 'unlocked' : ''} ${current ? 'current' : ''} ${d.pro ? 'proOwned' : ''}">
+        <div class="abTierHead"><b>Tier ${i}</b><span>${i * XP_PER} XP</span></div>
+        ${rewardCard('free', freeRewards[i - 1], unlocked, d.pro)}
+        ${rewardCard('pro', proRewards[i - 1], unlocked, d.pro)}
+      </div>`;
+    }
+
+    c.innerHTML = `<div class="abBpTop">
+      <div class="abBpTitle"><h2>Battle Pass</h2><p>${SEASON} · horizontal rewards track · XP is saved locally from completed games.</p></div>
+      <div class="abBpActions">
+        <button class="gold" id="abBuyPro">Buy PRO (${PRO_COST} wins)</button>
+        <button class="secondary" id="abApplyRewards">Equip Rewards</button>
+        <button class="secondary acToggle ${antiCheatOn ? 'on' : 'off'}" id="abToggleAc"><span>AntiCheat: ${antiCheatOn ? 'ON' : 'OFF'}</span><span class="pill" aria-hidden="true"></span></button>
+        <button class="secondary" id="abCloseBp">Close</button>
+      </div>
+    </div>
+    <div class="abBpStats">
+      <div class="abBpStat"><b>${d.xp}</b><span>Total XP</span></div>
+      <div class="abBpStat"><b>${t}/${TIERS}</b><span>Tier</span></div>
+      <div class="abBpStat"><b>${xpToNext(d)}</b><span>XP to next</span></div>
+      <div class="abBpStat"><b>${d.wins}</b><span>Wins</span></div>
+      <div class="abBpStat"><b>${d.pro ? 'Owned' : 'Locked'}</b><span>PRO pass</span></div>
+    </div>
+    <div class="abBpProgressWrap">
+      <div class="abBpProgressTop"><span>Current tier progress</span><span>${pct}%</span></div>
+      <div class="abBpProgress"><div style="width:${pct}%"></div></div>
+    </div>
+    <div class="abBpTrackShell">
+      <div class="abBpLaneLabels"><span>Rewards</span><span>Scroll sideways →</span></div>
+      <div class="abBpTrack">${track}</div>
+    </div>
+    <div class="abBpFooter">
+      <span>${activeGame ? `Current game active: ${escape(activeGame.difficulty || 'Normal')} · ${escape(activeGame.kit || 'Kit')}` : 'Finish matches to earn XP. Wins, bed breaks, final kills, kills and time survived all add XP.'}</span>
+      <span class="abBpToast">${last ? `Last game: +${last.xp} XP (${last.result})` : ''}</span>
+    </div>`;
+
+    c.querySelector('#abCloseBp').onclick = () => p.style.display = 'none';
+    c.querySelector('#abApplyRewards').onclick = () => { applyUnlockedRewards(); alert('Unlocked rewards equipped for the current game.'); };
+    c.querySelector('#abToggleAc').onclick = () => {
+      const nd = norm(data());
+      if (!nd.pro) {
+        nd.antiCheatEnabled = true;
+        save(nd);
+        window.AetherBedsModAPI?.toggleAntiCheat?.(true, { pro: false });
+        return alert('AntiCheat is always ON. PRO is required to disable it.');
+      }
+      nd.antiCheatEnabled = !(nd.antiCheatEnabled !== false);
+      save(nd);
+      window.AetherBedsModAPI?.toggleAntiCheat?.(nd.antiCheatEnabled, { pro: true });
+      render();
+    };
+    c.querySelector('#abBuyPro').onclick = () => {
+      const nd = norm(data());
+      if (nd.pro) return alert('You already own PRO.');
+      if (nd.wins < PRO_COST) return alert('Need ' + PRO_COST + ' wins to unlock PRO.');
+      nd.wins -= PRO_COST;
+      nd.pro = true;
+      nd.antiCheatEnabled = true;
+      nd.lastAward = { xp: 0, result: 'PRO unlocked', at: Date.now() };
+      save(nd);
+      render();
+    };
+
+    // Keep the currently reached tier roughly centred when opening.
+    const trackEl = c.querySelector('.abBpTrack');
+    if (trackEl && p.style.display !== 'none') {
+      const current = trackEl.querySelector('.abBpTier.current') || trackEl.lastElementChild;
+      current?.scrollIntoView?.({ inline: 'center', block: 'nearest' });
+    }
+  }
+  function scheduleRender() {
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(render, 30);
+  }
+  function escape(str) {
+    return String(str).replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  }
+
+  function unlockedRewards(d = norm(data())) {
+    const t = tier(d);
+    const rewards = freeRewards.slice(0, t);
+    if (d.pro) rewards.push(...proRewards.slice(0, t));
+    return rewards;
+  }
+  function applyUnlockedRewards() {
+    const d = norm(data());
+    window.AetherBedsModAPI?.applyBattlepassRewards?.(unlockedRewards(d));
+    window.AetherBedsModAPI?.toggleAntiCheat?.(d.pro ? d.antiCheatEnabled !== false : true, { pro: d.pro, silent: true });
+  }
+
+  window.AetherBedsBattlepass = {
+    data: () => norm(data()),
+    save,
+    startGame(info = {}) {
+      activeGame = { ...info, startedAt: Date.now() };
+      setTimeout(applyUnlockedRewards, 50);
+      scheduleRender();
+    },
+    awardGame(win, stats = {}) {
+      const d = norm(data());
+      const xp = awardAmount(win, stats);
+      d.games += 1;
+      if (win) d.wins += 1;
+      d.xp += xp;
+      d.lastAward = {
+        xp,
+        result: win ? 'Victory' : 'Defeat',
+        stats,
+        at: Date.now()
+      };
+      activeGame = null;
+      save(d);
+    },
+    unlockPro() {
+      const d = norm(data());
+      d.pro = true;
+      d.xp = Math.max(d.xp, TIERS * XP_PER);
+      d.lastAward = { xp: 0, result: 'PRO + all tiers unlocked', at: Date.now() };
+      activeGame = null;
+      save(d);
+    },
+    reset() {
+      localStorage.removeItem(KEY);
+      activeGame = null;
+      render();
+    }
+  };
+
+  ensureButton();
+  ensurePanel();
+  render();
+  setInterval(render, 1000);
+})();
+</script>
+
+
+
+<style>#abQuickToggle{position:fixed;right:12px;bottom:12px;z-index:1000002;border:1px solid rgba(139,233,255,.45);background:rgba(8,10,21,.88);color:white;border-radius:999px;padding:10px 13px;font-weight:900;cursor:pointer;box-shadow:0 12px 35px rgba(0,0,0,.4)}</style>
+<script>
+(() => {
+  function findGui(){return document.getElementById('abv5')||document.getElementById('abv4')||document.querySelector('.abMod')?.closest('div[id^="abv"]')||null}
+  function toggleGui(){const gui=findGui(); const settings=document.getElementById('abv5Settings')||document.getElementById('abv4Settings'); if(!gui)return; gui.style.display=gui.style.display==='none'?'block':'none'; if(settings&&gui.style.display==='none')settings.style.display='none'}
+  window.toggleAetherBedsGui=toggleGui;
+  ['keydown','keyup'].forEach(type=>{window.addEventListener(type,e=>{if(e.code==='ShiftRight'||(e.key==='Shift'&&e.location===2)){if(type==='keydown'&&!e.repeat)toggleGui(); e.preventDefault(); e.stopImmediatePropagation();}},true);document.addEventListener(type,e=>{if(e.code==='ShiftRight'||(e.key==='Shift'&&e.location===2)){if(type==='keydown'&&!e.repeat)toggleGui(); e.preventDefault(); e.stopImmediatePropagation();}},true);});
+  const b=document.createElement('button'); b.id='abQuickToggle'; b.textContent='MOD'; b.title='Toggle mod menu'; b.onclick=toggleGui; document.body.appendChild(b);
+
+  const wait=setInterval(()=>{const menu=window.AetherBedsMenuV5; if(!menu||!window.AetherBedsBattlepass)return; clearInterval(wait); patch(menu);},100);
+  function patch(menu){
+    if(!menu.cfg.BattlepassExploit) menu.cfg.BattlepassExploit={unlockPro:true,unlockAllTiers:true,showToast:true};
+    menu.modules.BattlepassExploit={on(){window.AetherBedsBattlepass.unlockPro(); if(menu.cfg.BattlepassExploit?.showToast) menu.api?.toast?.('BattlepassExploit: PRO + all tiers unlocked');},off(){}};
+    const body=document.getElementById('abv5Body')||document.getElementById('abv4Body');
+    if(body&&!document.querySelector('.abMod[data-name="BattlepassExploit"]')){
+      const cat=document.createElement('div');cat.className='abCat';cat.textContent='Progression';body.appendChild(cat);
+      const row=document.createElement('div');row.className='abMod';row.dataset.name='BattlepassExploit';row.dataset.search='battlepassexploit progression pro tiers';row.innerHTML='<span>BattlepassExploit<span class="abKey"></span></span><div class="abToggle"></div>';row.onclick=()=>menu.toggleModule('BattlepassExploit');row.oncontextmenu=e=>{e.preventDefault();menu.setModule('BattlepassExploit',true)};body.appendChild(row);
+    }
+    const oldSet=menu.setModule; menu.setModule=(n,en)=>{oldSet(n,en); const row=document.querySelector(`.abMod[data-name="${CSS.escape(n)}"]`); if(row)row.classList.toggle('on',!!menu.toggles[n]);};
+  }
+})();
+</script>
+
+
+<style>
+/* v5.3.2 hotfix: reliable cross-platform mod opener */
+#abHotfixOpenBtn {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2147483647;
+  width: 74px;
+  height: 38px;
+  border: 1px solid rgba(139,233,255,.45);
+  border-radius: 14px;
+  background: rgba(8,10,21,.92);
+  color: #edf2ff;
+  font: 900 13px Inter, system-ui, sans-serif;
+  box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+#abHotfixOpenBtn:hover {
+  background: rgba(139,233,255,.16);
+}
+#abHotfixOpenBtn:active {
+  transform: translateY(1px);
+}
+</style>
+
+<script>
+/* ============================================================
+   AetherBeds v5.3.2 HOTFIX
+   Problem:
+   - RightShift and the MOD button were failing because the generated
+     menu ID/name can differ between versions, and some handlers were
+     bound before the menu existed.
+
+   Fix:
+   - Finds the menu by multiple possible IDs.
+   - Creates the menu if hidden/mis-positioned.
+   - Uses pointerdown + click for the button.
+   - Uses capture-phase keydown on window/document.
+   - Supports Windows + macOS:
+     RightShift, F8, Backquote/tilde, and Ctrl+M / Cmd+M.
+   ============================================================ */
+(() => {
+  const HOTFIX_READY = "__AETHERBEDS_HOTFIX_531__";
+  if (window[HOTFIX_READY]) return;
+  window[HOTFIX_READY] = true;
+
+  function findMenu() {
+    return document.getElementById("abv5")
+      || document.getElementById("abv4")
+      || document.getElementById("abMenu")
+      || document.querySelector('[id^="abv"][style], [id^="abv"]')
+      || document.querySelector('[class*="abMod"]')?.closest("div");
+  }
+
+  function findSettings() {
+    return document.getElementById("abv5Settings")
+      || document.getElementById("abv4Settings")
+      || document.getElementById("abSettings");
+  }
+
+  function forceShow(menu) {
+    if (!menu) return false;
+    menu.style.display = "block";
+    menu.style.visibility = "visible";
+    menu.style.opacity = "1";
+    menu.style.pointerEvents = "auto";
+    menu.style.zIndex = "2147483646";
+    if (!menu.style.position || getComputedStyle(menu).position === "static") {
+      menu.style.position = "fixed";
+      menu.style.top = "76px";
+      menu.style.right = "18px";
+    }
+    return true;
+  }
+
+  function forceHide(menu) {
+    if (!menu) return false;
+    menu.style.display = "none";
+    const settings = findSettings();
+    if (settings) settings.style.display = "none";
+    return true;
+  }
+
+  function isOpen(menu) {
+    if (!menu) return false;
+    const cs = getComputedStyle(menu);
+    return cs.display !== "none" && cs.visibility !== "hidden" && Number(cs.opacity || "1") > 0;
+  }
+
+  function toggleMenu(event) {
+    const menu = findMenu();
+    if (!menu) {
+      console.warn("[AetherBeds Hotfix] Mod menu not found yet. Try after starting the match.");
+      return;
+    }
+    if (isOpen(menu)) forceHide(menu);
+    else forceShow(menu);
+
+    if (event) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      event.stopImmediatePropagation?.();
+    }
+  }
+
+  function ensureButton() {
+    let btn = document.getElementById("abHotfixOpenBtn");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.id = "abHotfixOpenBtn";
+      btn.type = "button";
+      btn.textContent = "MOD";
+      btn.title = "Open/close mod menu (RightShift, F8, ~, Ctrl/Cmd+M)";
+      document.body.appendChild(btn);
+    }
+
+    if (!btn.dataset.bound531) {
+      btn.dataset.bound531 = "1";
+      const handler = (event) => toggleMenu(event);
+      btn.addEventListener("pointerdown", handler, true);
+      btn.addEventListener("click", handler, true);
+      btn.addEventListener("touchstart", handler, true);
+    }
+  }
+
+  function keyHandler(event) {
+    const isRightShift = event.code === "ShiftRight" || (event.key === "Shift" && event.location === 2);
+    const isF8 = event.code === "F8" || event.key === "F8";
+    const isBackquote = event.code === "Backquote" || event.key === "`" || event.key === "~";
+    const isModM = (event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === "m";
+
+    if (!(isRightShift || isF8 || isBackquote || isModM)) return;
+    toggleMenu(event);
+  }
+
+  window.addEventListener("keydown", keyHandler, true);
+  document.addEventListener("keydown", keyHandler, true);
+
+  // Keep the button available even if game UI rebuilds.
+  ensureButton();
+  setInterval(ensureButton, 500);
+
+  // Expose manual emergency command.
+  window.openAetherBedsModMenu = () => {
+    const menu = findMenu();
+    if (menu) forceShow(menu);
+    return !!menu;
+  };
+  window.toggleAetherBedsModMenu = toggleMenu;
+
+  console.log("[AetherBeds] v5.3.2 hotfix loaded. Use RightShift, F8, ~, Ctrl/Cmd+M, or the MOD button.");
+})();
+</script>
+
+
+<script>
+/* v5.3.2 boot repair:
+   Fixes DataCloneError from structuredClone on some browsers/file:// setups.
+   Also gives a visible warning if the mod still fails to create its GUI.
+*/
+(() => {
+  setTimeout(() => {
+    const hasMenu = document.getElementById("abv5") || document.getElementById("abv4") || document.getElementById("abMenu");
+    const hasApi = !!window.AetherBedsModAPI;
+    if (!hasMenu && hasApi) {
+      console.warn("[AetherBeds] Mod API exists, but menu was not created. Check earlier console errors.");
+      let box = document.getElementById("abBootError");
+      if (!box) {
+        box = document.createElement("div");
+        box.id = "abBootError";
+        box.textContent = "MOD BOOT ERROR — check console";
+        box.style.cssText = "position:fixed;right:14px;bottom:60px;z-index:2147483647;padding:10px 12px;border-radius:12px;background:rgba(255,95,120,.92);color:white;font:900 12px Inter,system-ui;box-shadow:0 12px 35px rgba(0,0,0,.45)";
+        document.body.appendChild(box);
+      }
+    }
+  }, 1500);
+})();
+</script>
+
+</body>
+</html>
