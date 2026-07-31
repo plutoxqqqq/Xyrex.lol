@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AetherBeds 2D v5.3.3</title>
+<title>AetherBeds 2D v6.3.0</title>
 <style>
   :root {
     --bg: #070912;
@@ -328,10 +328,43 @@
 
 </head>
 <body>
+
+<script id="abv620InputGuard">
+(() => {
+  'use strict';
+  const editableSelector = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"]';
+  const uiSelector = '#centerOverlay,#shop,#hud,#help,#hotbar,#abv5,#abv4,#abv5Settings,#abv4Settings,#abv6Settings,#abv6Arsenal,button,input,textarea,select,label,[contenteditable],a';
+  const pathHas = (event, selector) => (event.composedPath?.() || []).some(node => node?.matches?.(selector));
+  const isEditable = target => !!target?.closest?.(editableSelector);
+  const typing = () => isEditable(document.activeElement);
+  const isUIEvent = event => pathHas(event, uiSelector) || !!event.target?.closest?.(uiSelector);
+
+  window.AetherBedsInputGuard = { isEditable, typing, isUIEvent };
+
+  const protectTyping = event => {
+    if (!isEditable(event.target) && !typing()) return;
+    // Do not preventDefault: normal typing, selection, clipboard shortcuts and
+    // accessibility controls still work. Only game/menu hotkey listeners stop.
+    event.stopImmediatePropagation();
+  };
+  window.addEventListener('keydown', protectTyping, true);
+  window.addEventListener('keyup', protectTyping, true);
+  window.addEventListener('keypress', protectTyping, true);
+
+  document.addEventListener('focusin', event => {
+    if (!isEditable(event.target)) return;
+    window.__AETHERBEDS_TYPING__ = true;
+    window.AetherBedsModAPI?.keys?.clear?.();
+  }, true);
+  document.addEventListener('focusout', () => {
+    queueMicrotask(() => { window.__AETHERBEDS_TYPING__ = typing(); });
+  }, true);
+})();
+</script>
 <canvas id="game"></canvas>
 
 <div id="hud">
-  <h1>AetherBeds 2D v5.3.3</h1>
+  <h1>AetherBeds 2D v6.3.0</h1>
   <div id="stats"></div>
 </div>
 
@@ -346,7 +379,7 @@
 
 <div id="centerOverlay">
   <div class="card" id="centerCard">
-    <h2>AetherBeds 2D v5.3.3</h2>
+    <h2>AetherBeds 2D v6.3.0</h2>
     <p class="primary">Original 2D bed-defense arena</p>
     <p>Choose your match settings, collect iron/gold/diamonds/emeralds, defend your bed, then final-kill the bot. Scroll this menu if options go below your screen.</p>
     <div class="menuOptions">
@@ -533,18 +566,36 @@
   let floatingTexts = [];
   let antiCheat = {
     enabled: true,
+    locked: true,
     lastX: 0,
     lastY: 0,
     lastT: 0,
     strikes: 0,
+    violationScore: 0,
+    lastViolationAt: 0,
+    lastToastAt: 0,
     wins: [],
     graceUntil: 0,
+    bypassLeaseUntil: 0,
+    scopePermits: Object.create(null),
+    authorised: [],
     lastLegitTeleport: 0,
     lastLegitAttack: -Infinity,
     lastLegitDash: -Infinity,
     lastLegitPlace: -Infinity,
     lastLegitProjectile: -Infinity,
+    observedAttack: -Infinity,
+    observedDash: -Infinity,
+    observedProjectile: -Infinity,
     lastItems: null,
+    lastHp: 0,
+    lastAlive: true,
+    lastEnemySpeed: 225,
+    lastRedBedAlive: true,
+    lastWorldCheck: 0,
+    lastMap: null,
+    lastProjectileCount: 0,
+    lastSafe: null,
     suspicious: []
   };
 
@@ -732,23 +783,10 @@
     e.strafeTimer = rand(0.4, 1.2);
     e.memory = { lastSeenPlayer: 0, pressure: 0, stuck: 0, lastX: e.x, lastY: e.y, goalSwitch: 0 };
     if (profile.label === 'God') {
-      e.maxHp = e.hp = 48;
-      e.speed = 255;
-      e.blocks = 160;
-      e.sword = 3;
-      e.armor = 3;
-      e.pickaxe = 3;
-      e.bow = true;
-      e.arrows = 96;
-      e.fireballs = 8;
-      e.tnt = 4;
-      e.pearls = 3;
-      e.sharpness = 3;
-      e.protection = 3;
-      e.haste = 2;
-      e.forge = 3;
-      e.healPool = true;
-      e.alarmTrap = true;
+      // v6.2.0: God is now skill-only. It keeps perfect decision making,
+      // prediction, clutching, and reactions without hidden HP/gear advantages.
+      e.aiDelay = 0;
+      e.memory.pressure = 1;
     }
     return e;
   }
@@ -796,7 +834,7 @@
 
   function toast(text) {
     messages.unshift({ text, life: 3.2 });
-    if (messages.length > 4) messages.pop();
+    if (messages.length > 2) messages.pop();
     renderToasts();
   }
 
@@ -809,6 +847,7 @@
   }
 
   function endGame(win) {
+    if (window.AetherBedsModes?.interceptEndGame?.(win)) return;
     state = 'gameover';
     shopOpen = false;
     shopEl.style.display = 'none';
@@ -1119,6 +1158,10 @@
   }
 
   function updatePlayer(dt) {
+    if (window.AetherBedsInputGuard?.typing?.() || window.__AETHERBEDS_TYPING__) {
+      keys.clear();
+      mouse.down = false;
+    }
     if (!player.alive) {
       player.respawn -= dt;
       if (player.respawn <= 0 && redBed.alive && state === 'playing') respawnEntity(player);
@@ -1703,81 +1746,232 @@
     shopEl.style.display = shopOpen ? 'grid' : 'none';
   }
 
-  function antiCheatFlag(reason, lethal = true) {
-    if (!antiCheat.enabled) return false;
-    antiCheat.strikes++;
-    toast(`AntiCheat: ${reason}`);
-    if (lethal && player?.alive) killEntity(player, 'blue');
+  function antiCheatScopeForAction(action = '') {
+    const value = String(action).toLowerCase();
+    if (value.includes('teleport')) return 'teleport';
+    if (value.includes('respawn') || value.includes('death') || value.includes('health')) return 'survival';
+    if (value.includes('damage') || value.includes('kill') || value.includes('attack')) return 'combat';
+    if (value.includes('bed') || value.includes('map') || value.includes('block') || value.includes('generator')) return 'world';
+    if (value.includes('item') || value.includes('resource') || value.includes('inventory')) return 'inventory';
+    if (value.includes('cooldown') || value.includes('projectile')) return 'cooldowns';
+    if (value.includes('speed') || value.includes('movement') || value.includes('void') || value.includes('boundary')) return 'movement';
+    return 'system';
+  }
+
+  function antiCheatScopeAllowed(scope) {
+    const now = performance.now();
+    if (!window.AetherBedsModAPI?.flags?.antiCheatBypass) return false;
+    if (now > (antiCheat.bypassLeaseUntil || 0)) return false;
+    return now <= (antiCheat.scopePermits.all || 0) || now <= (antiCheat.scopePermits[scope] || 0);
+  }
+
+  function grantAntiCheatScopes(scopes, ttl = 550) {
+    if (!window.AetherBedsModAPI?.flags?.antiCheatBypass) return false;
+    const now = performance.now();
+    const duration = clamp(Number(ttl) || 550, 120, 1400);
+    const expires = now + duration;
+    antiCheat.bypassLeaseUntil = Math.max(antiCheat.bypassLeaseUntil || 0, expires);
+    for (const scope of Array.isArray(scopes) ? scopes : [scopes]) {
+      if (!scope) continue;
+      antiCheat.scopePermits[String(scope)] = Math.max(antiCheat.scopePermits[String(scope)] || 0, expires);
+    }
     return true;
   }
 
-  function antiCheatBypassActive() {
-    return !!window.AetherBedsModAPI?.flags?.antiCheatBypass;
-  }
-
-  function syncAntiCheatPosition(graceMs = 700) {
-    const now = performance.now();
-    antiCheat.graceUntil = Math.max(antiCheat.graceUntil || 0, now + graceMs);
-    antiCheat.lastLegitTeleport = now;
-    antiCheat.lastX = player?.x || 0;
-    antiCheat.lastY = player?.y || 0;
-    antiCheat.lastT = now;
-    antiCheat.lastItems = antiCheatItemSnapshot();
-  }
-
-  function markSuspiciousAction(action, detail = '') {
-    if (!antiCheat.enabled || state !== 'playing') return false;
-    const bypassedActions = new Set(['teleport', 'respawn', 'direct respawn']);
-    if (antiCheatBypassActive() && bypassedActions.has(action)) {
-      syncAntiCheatPosition(900);
-      return false;
-    }
-    const now = performance.now();
-    antiCheat.suspicious.push({ action, detail, t: now });
-    antiCheat.suspicious = antiCheat.suspicious.filter(e => now - e.t < 5000);
-    return antiCheatFlag(`blocked suspicious ${action}${detail ? ': ' + detail : ''}`);
+  function clearAntiCheatScopes() {
+    antiCheat.bypassLeaseUntil = 0;
+    antiCheat.scopePermits = Object.create(null);
   }
 
   function antiCheatItemSnapshot() {
     if (!player) return null;
-    return { blocks: player.blocks || 0, arrows: player.arrows || 0, fireballs: player.fireballs || 0, tnt: player.tnt || 0, pearls: player.pearls || 0, gapples: player.gapples || 0 };
+    return {
+      iron: Number(player.inv?.iron || 0), gold: Number(player.inv?.gold || 0),
+      diamond: Number(player.inv?.diamond || 0), emerald: Number(player.inv?.emerald || 0),
+      blocks: Number(player.blocks || 0), arrows: Number(player.arrows || 0),
+      fireballs: Number(player.fireballs || 0), tnt: Number(player.tnt || 0),
+      pearls: Number(player.pearls || 0), gapples: Number(player.gapples || 0),
+      sword: Number(player.sword || 0), armor: Number(player.armor || 0), pickaxe: Number(player.pickaxe || 0)
+    };
+  }
+
+  function antiCheatResetBaselines(now = performance.now()) {
+    if (!player) return;
+    antiCheat.lastX = player.x;
+    antiCheat.lastY = player.y;
+    antiCheat.lastT = now;
+    antiCheat.lastItems = antiCheatItemSnapshot();
+    antiCheat.lastHp = player.hp || 0;
+    antiCheat.lastAlive = !!player.alive;
+    antiCheat.lastEnemySpeed = enemy?.speed || 225;
+    antiCheat.lastRedBedAlive = !!redBed?.alive;
+    antiCheat.lastProjectileCount = projectiles?.length || 0;
+    antiCheat.lastMap = map ? new Uint8Array(map) : null;
+    antiCheat.lastWorldCheck = now;
+    if (player.alive && groundCoverage(player) > 0.74 && inBounds(gx(player.x), gy(player.y))) {
+      antiCheat.lastSafe = { x: player.x, y: player.y };
+    }
+  }
+
+  function antiCheatFlag(reason, severity = 2, lethal = false) {
+    if (!antiCheat.enabled) return false;
+    if (typeof severity === 'boolean') { lethal = severity; severity = severity ? 6 : 2; }
+    const now = performance.now();
+    const elapsed = Math.max(0, now - (antiCheat.lastViolationAt || now));
+    antiCheat.violationScore = Math.max(0, (antiCheat.violationScore || 0) - elapsed / 2200);
+    antiCheat.violationScore += Math.max(1, Number(severity) || 1);
+    antiCheat.lastViolationAt = now;
+    antiCheat.strikes++;
+    antiCheat.suspicious.push({ action: 'violation', detail: reason, t: now, severity });
+    antiCheat.suspicious = antiCheat.suspicious.filter(entry => now - entry.t < 12000).slice(-24);
+
+    if (now - (antiCheat.lastToastAt || 0) > 550) {
+      toast(`AntiCheat ${Math.ceil(antiCheat.violationScore)}/8: ${reason}`);
+      antiCheat.lastToastAt = now;
+    }
+
+    const enforce = lethal || antiCheat.violationScore >= 8;
+    if (enforce && player?.alive) {
+      if (antiCheat.lastSafe && !antiCheatScopeAllowed('teleport')) {
+        player.x = antiCheat.lastSafe.x;
+        player.y = antiCheat.lastSafe.y;
+        player.vx = 0;
+        player.vy = 0;
+      }
+      killEntity(player, 'blue');
+      antiCheat.violationScore = Math.min(4, antiCheat.violationScore);
+      antiCheat.graceUntil = now + 1100;
+    }
+    return true;
+  }
+
+  function antiCheatBypassActive(scope = 'all') {
+    return antiCheatScopeAllowed(scope);
+  }
+
+  function syncAntiCheatPosition(graceMs = 700) {
+    const now = performance.now();
+    antiCheat.graceUntil = Math.max(antiCheat.graceUntil || 0, now + clamp(Number(graceMs) || 700, 100, 1800));
+    antiCheat.lastLegitTeleport = now;
+    antiCheatResetBaselines(now);
+  }
+
+  function markSuspiciousAction(action, detail = '') {
+    if (!antiCheat.enabled || state !== 'playing') return false;
+    const scope = antiCheatScopeForAction(action);
+    const now = performance.now();
+    if (scope !== 'system' && antiCheatScopeAllowed(scope)) {
+      antiCheat.authorised.push({ action, scope, t: now });
+      antiCheat.authorised = antiCheat.authorised.filter(entry => now - entry.t < 5000).slice(-30);
+      if (scope === 'teleport' || scope === 'survival') syncAntiCheatPosition(420);
+      return false;
+    }
+    antiCheat.suspicious.push({ action, detail, t: now, severity: 3 });
+    antiCheat.suspicious = antiCheat.suspicious.filter(entry => now - entry.t < 12000).slice(-24);
+    const severity = scope === 'system' ? 6 : (scope === 'combat' || scope === 'world' ? 4 : 3);
+    return antiCheatFlag(`blocked ${action}${detail ? ': ' + detail : ''}`, severity, scope === 'system');
   }
 
   function updateAntiCheat(dt) {
     if (!antiCheat.enabled || !player || state !== 'playing') return;
     const now = performance.now();
+    antiCheat.violationScore = Math.max(0, (antiCheat.violationScore || 0) - Math.max(0, dt) * 0.45);
+
     if (!antiCheat.lastT || now < antiCheat.graceUntil || !player.alive || player.respawn > 0) {
-      antiCheat.lastX = player.x; antiCheat.lastY = player.y; antiCheat.lastT = now; antiCheat.lastItems = antiCheatItemSnapshot(); return;
+      antiCheatResetBaselines(now);
+      return;
     }
-    const elapsed = Math.max(0.016, (now - antiCheat.lastT) / 1000);
+
+    const elapsed = Math.max(0.008, (now - antiCheat.lastT) / 1000);
     const moved = dist(player.x, player.y, antiCheat.lastX, antiCheat.lastY);
+    const movementAllowed = antiCheatScopeAllowed('movement');
+    const teleportAllowed = antiCheatScopeAllowed('teleport');
+    const inventoryAllowed = antiCheatScopeAllowed('inventory');
+    const cooldownAllowed = antiCheatScopeAllowed('cooldowns');
+    const survivalAllowed = antiCheatScopeAllowed('survival');
+    const worldAllowed = antiCheatScopeAllowed('world');
+
+    // Fundamental state integrity.
+    const finiteValues = [player.x, player.y, player.vx, player.vy, player.hp, player.maxHp, player.speed, player.attackCd, player.dashCd, player.bowCd];
+    if (finiteValues.some(value => !Number.isFinite(value))) antiCheatFlag('state integrity failed', 8, true);
+    if ((player.maxHp || 0) < 1 || (player.maxHp || 0) > 64 || (player.hp || 0) > (player.maxHp || 0) + 0.5) antiCheatFlag('health bounds failed', 5);
+    if ((player.sword || 0) > 3 || (player.armor || 0) > 3 || (player.pickaxe || 0) > 3) antiCheatFlag('gear bounds failed', 5);
+
+    // Movement, acceleration, teleport and boundary checks.
     const speedBootBonus = player.speedBoots ? 28 : 0;
     const assassinBonus = player.kit === 'Assassin' ? 18 : 0;
-    const legitBaseSpeed = 225 + speedBootBonus + assassinBonus;
-    const legitSpeedStat = Math.max(legitBaseSpeed, 238); // Speed Lines battlepass reward caps at 238.
-    if ((player.speed || 225) > legitSpeedStat + 8) antiCheatFlag('speed check failed: invalid speed stat');
-    const normalCap = legitSpeedStat * 1.45 + 85;
-    const dashCap = 2920 + (player.dashBonus || 0) * 320;
-    const bypassActive = antiCheatBypassActive();
-    const speedLimit = player.dashTime > 0 || now - antiCheat.lastLegitDash < 350 ? dashCap : normalCap;
-    if (!bypassActive && moved / elapsed > speedLimit) antiCheatFlag('speed check failed: movement too fast');
-    if (!bypassActive && moved > 460 && now - antiCheat.lastLegitTeleport > 1400 && now - antiCheat.lastLegitDash > 450) antiCheatFlag('teleport check failed');
+    const legitimateSpeed = Math.max(238, 225 + speedBootBonus + assassinBonus) + 55; // includes legitimate potion/relic bursts
+    const measuredSpeed = moved / elapsed;
+    const dashWindow = player.dashTime > 0 || now - antiCheat.lastLegitDash < 390;
+    const movementCap = dashWindow ? 3500 + (player.dashBonus || 0) * 360 : legitimateSpeed * 1.58 + 95;
+    if (!movementAllowed && (player.speed || 225) > legitimateSpeed + 10) antiCheatFlag('illegal speed stat', 4);
+    if (!movementAllowed && measuredSpeed > movementCap) antiCheatFlag(`movement rate ${Math.round(measuredSpeed)}`, measuredSpeed > movementCap * 1.8 ? 6 : 3);
+    if (!teleportAllowed && moved > 520 && now - antiCheat.lastLegitTeleport > 1300 && !dashWindow) antiCheatFlag('unapproved teleport', 6);
+    if (!movementAllowed && !inBounds(gx(player.x), gy(player.y)) && !window.AetherBedsModAPI?.flags?.noBoundaries) antiCheatFlag('world boundary escape', 5);
+    const coverage = groundCoverage(player);
+    if (!movementAllowed && coverage <= 0.001 && !isWalkableAt(player.x, player.y) && (player.voidTime || 0) > 0.12 && player.invuln < 0.15) antiCheatFlag('unsupported movement', 5);
+    if (player.alive && coverage > 0.74 && inBounds(gx(player.x), gy(player.y))) antiCheat.lastSafe = { x: player.x, y: player.y };
 
+    // Input-rate/cooldown integrity uses event timestamps rather than mutable cooldown fields.
+    if (antiCheat.observedAttack !== antiCheat.lastLegitAttack) {
+      if (!cooldownAllowed && antiCheat.observedAttack > -Infinity && antiCheat.lastLegitAttack - antiCheat.observedAttack < 86) antiCheatFlag('melee rate exceeded', 3);
+      antiCheat.observedAttack = antiCheat.lastLegitAttack;
+    }
+    if (antiCheat.observedDash !== antiCheat.lastLegitDash) {
+      if (!cooldownAllowed && antiCheat.observedDash > -Infinity && antiCheat.lastLegitDash - antiCheat.observedDash < 270) antiCheatFlag('dash rate exceeded', 3);
+      antiCheat.observedDash = antiCheat.lastLegitDash;
+    }
+    if (antiCheat.observedProjectile !== antiCheat.lastLegitProjectile) {
+      if (!cooldownAllowed && antiCheat.observedProjectile > -Infinity && antiCheat.lastLegitProjectile - antiCheat.observedProjectile < 175) antiCheatFlag('projectile rate exceeded', 3);
+      antiCheat.observedProjectile = antiCheat.lastLegitProjectile;
+    }
+    const projectileGrowth = (projectiles?.length || 0) - (antiCheat.lastProjectileCount || 0);
+    if (!cooldownAllowed && projectileGrowth > 5) antiCheatFlag('projectile burst exceeded', 4);
+
+    // Inventory/resource mutation checks.
     const items = antiCheatItemSnapshot();
-    if (Object.values(items).some(v => v < 0 || !Number.isFinite(v))) antiCheatFlag('item check failed');
-    if (antiCheat.lastItems) {
-      if (items.blocks - antiCheat.lastItems.blocks > 80) antiCheatFlag('item check failed: block spike');
-      if (items.arrows - antiCheat.lastItems.arrows > 48) antiCheatFlag('item check failed: arrow spike');
-      if (items.fireballs - antiCheat.lastItems.fireballs > 3 || items.tnt - antiCheat.lastItems.tnt > 3 || items.pearls - antiCheat.lastItems.pearls > 2) antiCheatFlag('item check failed: utility spike');
+    if (Object.values(items).some(value => value < 0 || !Number.isFinite(value))) antiCheatFlag('inventory integrity failed', 6);
+    if (antiCheat.lastItems && !inventoryAllowed) {
+      const delta = key => items[key] - antiCheat.lastItems[key];
+      if (delta('iron') > 96 || delta('gold') > 32 || delta('diamond') > 12 || delta('emerald') > 8) antiCheatFlag('resource spike', 4);
+      if (delta('blocks') > 128 || delta('arrows') > 80) antiCheatFlag('stack spike', 4);
+      if (delta('fireballs') > 5 || delta('tnt') > 5 || delta('pearls') > 3 || delta('gapples') > 4) antiCheatFlag('utility spike', 4);
     }
 
-    if (!bypassActive && ((player.attackCd <= 0 && now - antiCheat.lastLegitAttack < 90) || (player.dashCd <= 0 && now - antiCheat.lastLegitDash < 260) || (player.bowCd <= 0 && now - antiCheat.lastLegitProjectile < 180))) antiCheatFlag('cooldown check failed');
-    const coverage = groundCoverage(player);
-    if (!bypassActive && player.alive && coverage <= 0.001 && !isWalkableAt(player.x, player.y) && (player.voidTime || 0) > 0.18 && player.invuln < 0.15) antiCheatFlag('void check failed');
+    // Survival and respawn integrity.
+    if (!survivalAllowed && (player.hp || 0) - (antiCheat.lastHp || 0) > 15) antiCheatFlag('unapproved healing', 3);
+    if (!survivalAllowed && (player.invuln || 0) > 1.75) antiCheatFlag('invulnerability duration exceeded', 4);
+    if (!survivalAllowed && !antiCheat.lastAlive && player.alive && redBed && !redBed.alive) antiCheatFlag('respawn without bed', 6);
+    if (!worldAllowed && antiCheat.lastRedBedAlive === false && redBed?.alive === true) antiCheatFlag('bed resurrection', 7);
+
+    // World mutation, bot tampering and generator integrity.
+    if (now - antiCheat.lastWorldCheck >= 250) {
+      if (antiCheat.lastMap && map && !worldAllowed) {
+        let changes = 0;
+        for (let i = 0; i < map.length; i++) {
+          if (map[i] !== antiCheat.lastMap[i] && ++changes > 48) break;
+        }
+        if (changes > 48) antiCheatFlag(`mass world edit (${changes}+)`, 6);
+      }
+      antiCheat.lastMap = map ? new Uint8Array(map) : null;
+      antiCheat.lastWorldCheck = now;
+    }
+    if (!worldAllowed && enemy && enemy.alive && (enemy.speed || 0) < 150) antiCheatFlag('enemy movement tampering', 4);
+    if (!worldAllowed && (generators || []).some(g => g.baseRate && g.rate < g.baseRate * 0.28)) antiCheatFlag('generator rate tampering', 4);
+
     antiCheat.wins = antiCheat.wins.filter(t => now - t < 120000);
-    if (antiCheat.wins.length > 7) antiCheatFlag('win cap reached');
-    if (antiCheat.suspicious.filter(e => now - e.t < 5000).length >= 3) antiCheatFlag('suspicious behaviour burst');
-    antiCheat.lastX = player.x; antiCheat.lastY = player.y; antiCheat.lastT = now; antiCheat.lastItems = items;
+    if (antiCheat.wins.length > 6) antiCheatFlag('impossible win frequency', 3);
+    if (antiCheat.suspicious.filter(entry => now - entry.t < 5000).length >= 5) antiCheatFlag('violation burst', 4);
+
+    antiCheat.lastX = player.x;
+    antiCheat.lastY = player.y;
+    antiCheat.lastT = now;
+    antiCheat.lastItems = items;
+    antiCheat.lastHp = player.hp || 0;
+    antiCheat.lastAlive = !!player.alive;
+    antiCheat.lastEnemySpeed = enemy?.speed || 225;
+    antiCheat.lastRedBedAlive = !!redBed?.alive;
+    antiCheat.lastProjectileCount = projectiles?.length || 0;
   }
 
   function update(dt) {
@@ -2116,23 +2310,22 @@
 
   function renderUI() {
     if (!player) {
-      statsEl.innerHTML = '<div class="stat">Press Enter to start</div>';
+      statsEl.innerHTML = '<div class="stat">Enter to start</div>';
       hotbarEl.innerHTML = '';
       return;
     }
-    const redStatus = redBed.alive ? `Alive (${Math.ceil(redBed.hp)})` : 'Destroyed';
-    const blueStatus = blueBed.alive ? `Alive (${Math.ceil(blueBed.hp)})` : 'Destroyed';
+    const redStatus = redBed.alive ? Math.ceil(redBed.hp) : '✕';
+    const blueStatus = blueBed.alive ? Math.ceil(blueBed.hp) : '✕';
+    const comboText = player.combo > 1 ? ` · ${player.combo}x combo` : '';
     statsEl.innerHTML = `
-      <div class="stat">HP: <b>${Math.ceil(player.hp)}/${player.maxHp}</b></div>
-      <div class="stat">Time: <b>${Math.floor(gameTime)}s</b></div>
-      <div class="stat">Red Bed: <b style="color:${redBed.alive ? 'var(--good)' : 'var(--danger)'}">${redStatus}</b></div>
-      <div class="stat">Blue Bed: <b style="color:${blueBed.alive ? '#61a8ff' : 'var(--danger)'}">${blueStatus}</b></div>
-      <div class="stat">Kills: <b>${player.kills}</b></div>
-      <div class="stat">Bot: <b>${enemy?.profile?.label || 'Normal'} ${enemy?.personality?.name ? `(${enemy.personality.name})` : ''}</b></div>
-      <div class="stat">Bot Goal: <b>${enemy?.goal || '-'}</b></div>
-      <div class="stat">Kit: <b>${player.kit}</b></div>
-      <div class="stat">Map: <b>${mapVariants[selectedMapIndex].name}</b></div>
-      <div class="stat">Upgrades: <b>S${player.sharpness} P${player.protection} H${player.haste} F${player.forge}</b></div>
+      <div class="stat">HP <b>${Math.ceil(player.hp)}/${player.maxHp}</b>${comboText}</div>
+      <div class="stat">Time <b>${Math.floor(gameTime)}s</b></div>
+      <div class="stat">Your bed <b style="color:${redBed.alive ? 'var(--good)' : 'var(--danger)'}">${redStatus}</b></div>
+      <div class="stat">Enemy bed <b style="color:${blueBed.alive ? '#61a8ff' : 'var(--danger)'}">${blueStatus}</b></div>
+      <div class="stat uiDetail">Kills <b>${player.kills}</b></div>
+      <div class="stat uiDetail">Kit <b>${player.kit}</b></div>
+      <div class="stat uiDetail">Bot <b>${enemy?.profile?.label || 'Normal'}</b></div>
+      <div class="stat uiDetail">Upgrades <b>S${player.sharpness} P${player.protection} H${player.haste} F${player.forge}</b></div>
     `;
     hotbarEl.innerHTML = `
       <div class="slot"><b>${player.inv.iron}</b>Iron</div>
@@ -2141,12 +2334,10 @@
       <div class="slot"><b>${player.inv.emerald}</b>Emerald</div>
       <div class="slot"><b>${player.blocks}</b>Blocks</div>
       <div class="slot"><b>${swordNames[player.sword]}</b>Sword</div>
-      <div class="slot"><b>${armorNames[player.armor]}</b>Armor</div>
-      <div class="slot"><b>${player.bow ? player.arrows : 'No'}</b>Bow</div>
-      <div class="slot"><b>${player.fireballs}/${player.tnt}/${player.pearls}</b>Q/R/T</div>
-      <div class="slot"><b>${player.gapples}</b>Gapples</div>
-      <div class="slot"><b>${player.combo > 1 ? player.combo + 'x' : '-'}</b>Combo</div>
-      <div class="slot"><b>${Math.round((player.ground || 1) * 100)}%</b>Ground</div>
+      <div class="slot uiDetail"><b>${armorNames[player.armor]}</b>Armor</div>
+      <div class="slot uiDetail"><b>${player.bow ? player.arrows : '—'}</b>Bow</div>
+      <div class="slot uiDetail"><b>${player.fireballs}/${player.tnt}/${player.pearls}</b>Q/R/T</div>
+      <div class="slot uiDetail"><b>${player.gapples}</b>Gapples</div>
     `;
   }
 
@@ -2207,14 +2398,21 @@
     updateInputWorld();
   });
   addEventListener('mousedown', e => {
+    if (window.AetherBedsInputGuard?.isUIEvent?.(e)) return;
     mouse.down = true;
     if (e.button === 0) playerAttack();
     if (e.button === 2) placeBlock();
   });
-  addEventListener('mouseup', () => { mouse.down = false; });
-  addEventListener('contextmenu', e => e.preventDefault());
+  addEventListener('mouseup', e => {
+    if (window.AetherBedsInputGuard?.isUIEvent?.(e)) return;
+    mouse.down = false;
+  });
+  addEventListener('contextmenu', e => {
+    if (e.target === canvas) e.preventDefault();
+  });
 
   addEventListener('keydown', e => {
+    if (window.AetherBedsInputGuard?.typing?.() || window.__AETHERBEDS_TYPING__) return;
     const k = e.key.toLowerCase();
     if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
     keys.add(k);
@@ -2239,7 +2437,7 @@
     if (k === 't') throwUtility(player, mouse.worldX, mouse.worldY, 'pearl');
   });
 
-  addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+  addEventListener('keyup', e => { if (!window.AetherBedsInputGuard?.typing?.()) keys.delete(e.key.toLowerCase()); });
 
   populateMenuControls();
 
@@ -2254,7 +2452,7 @@
   projectiles = [];
   particles = [];
 /* ============================================================
-   AetherBeds 2D v5.3.3 - Private Mod API Hook v5
+   AetherBeds 2D v6.3.0 - Private Mod API Hook v5
    Paste this INSIDE your main (() => { ... }) game script,
    directly BEFORE the final renderUI(); call.
 
@@ -2267,7 +2465,7 @@
    ============================================================ */
 
 window.AetherBedsModAPI = {
-  version: "AetherBeds 2D v5.3.3 Private Hook v5",
+  version: "AetherBeds 2D v6.3.0 Streamlined Hook",
 
   flags: {
     noBoundaries: false,
@@ -2340,6 +2538,7 @@ window.AetherBedsModAPI = {
   burst,
   floatText,
   damageEntity(target, amount, sourceTeam) { if (sourceTeam === "red" && target === enemy && markSuspiciousAction?.("direct damage", String(Math.round(amount)))) return; return damageEntity(target, amount, sourceTeam); },
+  gameDamageEntity(target, amount, sourceTeam) { return damageEntity(target, amount, sourceTeam); },
   killEntity(target, sourceTeam) { if (sourceTeam === "red" && target === enemy && markSuspiciousAction?.("direct kill", "enemy")) return; return killEntity(target, sourceTeam); },
   respawnEntity(ent) { if (ent === player && markSuspiciousAction?.("direct respawn", "player")) return; return respawnEntity(ent); },
   breakBed(bed, breakerTeam) { if (breakerTeam === "red" && markSuspiciousAction?.("direct bed break", bed?.team || "unknown")) return; return breakBed(bed, breakerTeam); },
@@ -2358,7 +2557,12 @@ window.AetherBedsModAPI = {
   registerCombo,
   renderUI,
   flagSuspicious(action, detail = '') { return markSuspiciousAction?.(action, detail); },
-  syncAntiCheat(graceMs = 700) { syncAntiCheatPosition(graceMs); },
+  syncAntiCheat(graceMs = 700) {
+    if (!antiCheatScopeAllowed('teleport') && !antiCheatScopeAllowed('survival')) return markSuspiciousAction?.('anti-cheat sync', String(graceMs));
+    syncAntiCheatPosition(graceMs);
+    return true;
+  },
+  syncGameAction(graceMs = 700) { syncAntiCheatPosition(graceMs); return true; },
 
   teleportPlayer(x, y) {
     if (!player) return;
@@ -2370,15 +2574,27 @@ window.AetherBedsModAPI = {
   },
 
   teleportEntity(ent, x, y) {
-    if (!ent) return;
+    if (!ent) return false;
+    if (ent === player && markSuspiciousAction?.("teleport entity", `${Math.round(x)},${Math.round(y)}`)) return false;
     ent.x = x;
     ent.y = y;
     ent.vx = 0;
     ent.vy = 0;
+    return true;
+  },
+
+  gameTeleportEntity(ent, x, y) {
+    if (!ent) return false;
+    ent.x = x;
+    ent.y = y;
+    ent.vx = 0;
+    ent.vy = 0;
+    return true;
   },
 
   spawnResource(type, x, y, amount = 1) {
-    if (!resources) return;
+    if (!resources) return false;
+    if (markSuspiciousAction?.("resource spawn", `${type} x${amount}`)) return false;
     for (let i = 0; i < amount; i++) {
       resources.push({
         x: x + (Math.random() - 0.5) * 24,
@@ -2389,6 +2605,13 @@ window.AetherBedsModAPI = {
         life: 30
       });
     }
+    return true;
+  },
+
+  gameSpawnResource(type, x, y, amount = 1) {
+    if (!resources) return false;
+    for (let i = 0; i < amount; i++) resources.push({ x:x+(Math.random()-.5)*24, y:y+(Math.random()-.5)*24, vx:0, vy:0, type, life:30 });
+    return true;
   },
 
   safeRespawn(ent = player, spawnMode = "base") {
@@ -2424,6 +2647,7 @@ window.AetherBedsModAPI = {
 
   forcePlaceBlockAt(worldX, worldY, team = "red", consume = true) {
     if (!player) return false;
+    if (markSuspiciousAction?.("block placement API", `${Math.round(worldX)},${Math.round(worldY)}`)) return false;
 
     const tx = gx(worldX);
     const ty = gy(worldY);
@@ -2441,28 +2665,65 @@ window.AetherBedsModAPI = {
     return true;
   },
 
+  gamePlaceBlockAt(worldX, worldY, team = "red", consume = true) {
+    if (!player) return false;
+    const tx=gx(worldX),ty=gy(worldY);
+    if(!inBounds(tx,ty)||getTile(tx,ty)!==VOID)return false;
+    const c=centerOf(tx,ty);
+    if((redBed&&pointNearRect(c.x,c.y,redBed,4))||(blueBed&&pointNearRect(c.x,c.y,blueBed,4))||(consume&&player.blocks<=0))return false;
+    setTile(tx,ty,team==="blue"?BLUE_BLOCK:RED_BLOCK);
+    if(consume)player.blocks--;
+    burst(c.x,c.y,team==="blue"?"#61a8ff":"#ff5f78",5);
+    return true;
+  },
+
   forceBreakBed(team = "blue") {
+    if (markSuspiciousAction?.("direct bed break", team)) return false;
     const bed = team === "blue" ? blueBed : redBed;
     if (!bed || !bed.alive) return false;
     breakBed(bed, team === "blue" ? "red" : "blue");
     return true;
   },
 
-  toggleAntiCheat(value, opts = {}) {
-    const requested = typeof value === "boolean" ? value : !antiCheat.enabled;
-    if (!requested && !opts.pro) {
-      antiCheat.enabled = true;
-      antiCheat.lastT = 0;
-      if (!opts.silent) toast("AntiCheat is always on unless PRO disables it.");
-      return antiCheat.enabled;
-    }
-    antiCheat.enabled = requested;
-    antiCheat.lastT = 0;
-    if (!opts.silent) toast(`AntiCheat ${antiCheat.enabled ? "enabled" : "disabled"}.`);
-    return antiCheat.enabled;
+  gameBreakBed(team = "blue") {
+    const bed=team==="blue"?blueBed:redBed;
+    if(!bed||!bed.alive)return false;
+    breakBed(bed,team==="blue"?"red":"blue");
+    return true;
   },
 
-  get antiCheatEnabled() { return antiCheat.enabled; },
+  gameEnd(win) { return endGame(!!win); },
+
+  grantAntiCheatScopes(scopes, ttl = 550) {
+    return grantAntiCheatScopes(scopes, ttl);
+  },
+
+  clearAntiCheatScopes() {
+    clearAntiCheatScopes();
+  },
+
+  getAntiCheatStatus() {
+    const now = performance.now();
+    return {
+      enabled: true,
+      locked: true,
+      score: Number((antiCheat.violationScore || 0).toFixed(2)),
+      strikes: antiCheat.strikes,
+      bypassLeaseMs: Math.max(0, Math.round((antiCheat.bypassLeaseUntil || 0) - now)),
+      scopes: Object.fromEntries(Object.entries(antiCheat.scopePermits || {}).filter(([, expiry]) => expiry > now).map(([scope, expiry]) => [scope, Math.round(expiry - now)])),
+      recent: antiCheat.suspicious.slice(-6)
+    };
+  },
+
+  toggleAntiCheat(value, opts = {}) {
+    antiCheat.enabled = true;
+    antiCheat.locked = true;
+    antiCheat.lastT = 0;
+    if (!opts.silent && value === false) toast("AntiCheat is integrity-locked ON. Use scoped AntiCheatBypass for authorised modules.");
+    return true;
+  },
+
+  get antiCheatEnabled() { return true; },
 
   applyBattlepassRewards(rewards = []) {
     if (!player) return;
@@ -2481,7 +2742,8 @@ window.AetherBedsModAPI = {
   setFlag(name, value) {
     if (Object.prototype.hasOwnProperty.call(this.flags, name)) {
       this.flags[name] = !!value;
-      toast(`Mod flag ${name}: ${value ? "ON" : "OFF"}`);
+      if (name === "antiCheatBypass" && !value) clearAntiCheatScopes();
+      if (name !== "antiCheatBypass") toast(`Mod flag ${name}: ${value ? "ON" : "OFF"}`);
     }
   }
 };
@@ -2498,10 +2760,10 @@ window.AetherBedsModAPI = {
      ============================================================ -->
 <script>
 // ==UserScript==
-// @name         AetherBeds 2D v5.3.3 - Private Mod Menu v5
+// @name         AetherBeds 2D v6.3.0 - Private Mod Menu v5
 // @namespace    aetherbeds.local.private
 // @version      5.2.0
-// @description  Private single-game mod menu for your own AetherBeds 2D v5.3.3 HTML.
+// @description  Private single-game mod menu for your own AetherBeds 2D v6.3.0 HTML.
 // @match        file:///*sigmabw*.html*
 // @match        *://*/sigmabw*.html*
 // @grant        none
@@ -2558,19 +2820,9 @@ window.AetherBedsModAPI = {
       RemoveBreakLimits: { range: 9999 },
       NoHitDelay: { delay: 18 },
       ProjectileExploit: { delay: 35, preferFireballs: false },
-      AntiCheatBypass: { reduceSpeed: true, spoofCooldowns: true },
+      AntiCheatBypass: { movement: true, teleport: true, combat: true, cooldowns: true, inventory: true, survival: true, world: true, leaseMs: 650 },
       ProjectileAimbot: { strength: 1, range: 900, arrows: true, fireballs: true, tnt: true },
       ArrowBypass: { arrows: true, showIndicator: false },
-
-      ArrowBypass: {
-        on: () => {
-          api.setFlag?.("arrowBypass", true);
-        },
-        off: () => {
-          api.setFlag?.("arrowBypass", false);
-          stop("ArrowBypass");
-        }
-      },
 
       InstantBreak: { range: 120 },
       Speed: { multiplier: 1.65 },
@@ -2897,15 +3149,17 @@ window.AetherBedsModAPI = {
       AntiCheatBypass: {
         on: () => {
           api.setFlag?.("antiCheatBypass", true);
-          loop("AntiCheatBypass", 30, () => {
-            const p = api.player;
-            if (!alive(p)) return;
-            if (cfg.AntiCheatBypass.reduceSpeed) p.speed = Math.min(p.speed || 225, 238);
-            if (cfg.AntiCheatBypass.spoofCooldowns) { p.attackCd = Math.max(p.attackCd || 0, 0.10); p.dashCd = Math.max(p.dashCd || 0, 0.28); p.bowCd = Math.max(p.bowCd || 0, 0.20); }
-            api.syncAntiCheat?.(350);
+          loop("AntiCheatBypass", 180, () => {
+            const settings = cfg.AntiCheatBypass || {};
+            const scopes = ["movement", "teleport", "combat", "cooldowns", "inventory", "survival", "world"].filter(scope => settings[scope] !== false);
+            api.grantAntiCheatScopes?.(scopes, Math.max(300, Number(settings.leaseMs) || 650));
           });
         },
-        off: () => { api.setFlag?.("antiCheatBypass", false); stop("AntiCheatBypass"); }
+        off: () => {
+          api.setFlag?.("antiCheatBypass", false);
+          api.clearAntiCheatScopes?.();
+          stop("AntiCheatBypass");
+        }
       },
 
       ProjectileAimbot: {
@@ -3386,7 +3640,7 @@ window.AetherBedsModAPI = {
       menu.id = "abv5";
       menu.innerHTML = `
         <div id="abv5Head">
-          <b>AetherCore Private v5.2.2</b>
+          <b>AetherCore Private v6.2.0</b>
           <button id="abv5Hide">Hide</button>
         </div>
         <input id="abv5Search" placeholder="Search modules..." />
@@ -4501,6 +4755,1108 @@ window.AetherBedsModAPI = {
       }
     }
   }, 1500);
+})();
+</script>
+
+
+
+<!-- ============================================================
+     AetherBeds 2D v6.3.0 — Colossal Gameplay + Mod Expansion
+     Original browser-game systems; no external Roblox code/assets.
+     ============================================================ -->
+<style id="abv6ExpansionStyle">
+  #abv6EventBar{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:45;min-width:340px;max-width:min(720px,calc(100vw - 760px));padding:9px 14px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:rgba(8,10,21,.88);backdrop-filter:blur(12px);box-shadow:0 12px 40px rgba(0,0,0,.36);text-align:center;pointer-events:none;font:800 12px Inter,system-ui;color:#edf2ff}
+  #abv6EventBar b{color:#8be9ff}
+  #abv6Status{position:fixed;left:12px;bottom:100px;z-index:45;width:310px;padding:11px 12px;border:1px solid rgba(255,255,255,.10);border-radius:15px;background:rgba(8,10,21,.82);backdrop-filter:blur(12px);box-shadow:0 12px 40px rgba(0,0,0,.34);pointer-events:none;font:750 11.5px/1.45 Inter,system-ui;color:#aab3cf}
+  #abv6Status b{color:#edf2ff}.abv6Good{color:#72ff9d}.abv6Warn{color:#ffd166}.abv6Bad{color:#ff5f78}
+  #abv6Overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:38;pointer-events:none}
+  #abv6Arsenal{display:none;position:fixed;inset:0;z-index:900000;place-items:center;background:rgba(2,3,9,.58);backdrop-filter:blur(7px)}
+  #abv6Arsenal.open{display:grid}
+  #abv6ArsenalCard{width:min(980px,calc(100vw - 30px));max-height:calc(100vh - 30px);overflow:auto;padding:20px;border-radius:22px;background:linear-gradient(180deg,rgba(16,20,38,.98),rgba(8,10,21,.98));border:1px solid rgba(255,255,255,.14);box-shadow:0 24px 90px rgba(0,0,0,.62);color:#edf2ff;font-family:Inter,system-ui}
+  #abv6ArsenalHead{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:-20px;padding:17px 0 12px;background:rgba(12,15,30,.97);z-index:2}
+  #abv6ArsenalHead h2{margin:0;font-size:28px}#abv6ArsenalHead button{border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.08);color:white;border-radius:12px;padding:9px 12px;font-weight:900;cursor:pointer}
+  .abv6ShopTitle{margin:15px 0 7px;color:#8be9ff;font-size:11px;font-weight:950;letter-spacing:.09em;text-transform:uppercase}
+  .abv6ShopGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+  .abv6Buy{padding:11px;border-radius:14px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.09);cursor:pointer;transition:.12s}.abv6Buy:hover{background:rgba(139,233,255,.10);border-color:rgba(139,233,255,.36);transform:translateY(-1px)}
+  .abv6Buy b{display:block;font-size:13px}.abv6Buy span{display:block;margin-top:3px;color:#aab3cf;font-size:11px;line-height:1.35}.abv6Buy small{display:block;margin-top:6px;color:#8be9ff;font-weight:900}
+  #abv6Settings{display:none;position:fixed;top:96px;right:408px;width:350px;max-height:78vh;overflow:auto;z-index:2147483646;padding:15px;border-radius:18px;background:rgba(8,10,21,.98);border:1px solid rgba(255,255,255,.14);box-shadow:0 20px 80px rgba(0,0,0,.58);color:#edf2ff;font-family:Inter,system-ui}
+  #abv6Settings h3{margin:0 0 8px;color:#8be9ff}#abv6Settings label{display:block;margin:9px 0 4px;color:#aab3cf;font-size:10px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+  #abv6Settings input,#abv6Settings select,#abv6Settings button{width:100%;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.07);color:#edf2ff;outline:none}#abv6Settings input[type=checkbox]{width:auto}
+  #abv6Settings .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}#abv6Settings button{font-weight:900;cursor:pointer}
+  #abv6RelicField{grid-column:1/-1}
+  #abv6RelicField select{width:100%;color:white;background:rgba(5,8,18,.95);border:1px solid rgba(139,233,255,.28);border-radius:12px;padding:10px 12px;outline:none;font-weight:800}
+  #abv6Tip{position:fixed;z-index:2147483647;display:none;max-width:280px;padding:8px 10px;border-radius:12px;background:rgba(5,8,18,.96);border:1px solid rgba(139,233,255,.28);color:#edf2ff;font:700 11.5px/1.4 Inter,system-ui;pointer-events:none}
+  @media(max-width:900px){#abv6Status{display:none}#abv6EventBar{max-width:calc(100vw - 28px)}.abv6ShopGrid{grid-template-columns:1fr 1fr}}
+  @media(max-width:600px){.abv6ShopGrid{grid-template-columns:1fr}}
+</style>
+
+<div id="abv6EventBar"><b>AetherBeds v6</b> expansion ready</div>
+<div id="abv6Status"></div>
+<canvas id="abv6Overlay"></canvas>
+<div id="abv6Arsenal">
+  <div id="abv6ArsenalCard">
+    <div id="abv6ArsenalHead"><div><h2>Advanced Arsenal</h2><div style="color:#aab3cf;font-size:12px">Press U to close · normally usable at your base</div></div><button id="abv6ArsenalClose">Close</button></div>
+    <div id="abv6ArsenalBody"></div>
+  </div>
+</div>
+<div id="abv6Settings"></div>
+<div id="abv6Tip"></div>
+
+<script>
+(() => {
+  'use strict';
+  const BOOT = setInterval(() => {
+    const api = window.AetherBedsModAPI;
+    if (!api) return;
+    clearInterval(BOOT);
+    startExpansion(api);
+  }, 100);
+
+  function startExpansion(api) {
+    if (window.__AETHERBEDS_V6_EXPANSION__) return;
+    window.__AETHERBEDS_V6_EXPANSION__ = true;
+
+    const TILE = api.constants.TILE;
+    const C = api.constants;
+    const eventBar = document.getElementById('abv6EventBar');
+    const status = document.getElementById('abv6Status');
+    const overlay = document.getElementById('abv6Overlay');
+    const octx = overlay.getContext('2d');
+    const arsenal = document.getElementById('abv6Arsenal');
+    const arsenalBody = document.getElementById('abv6ArsenalBody');
+    const settingsBox = document.getElementById('abv6Settings');
+    const tip = document.getElementById('abv6Tip');
+
+    const storageKey = 'AetherBedsV6Expansion';
+    const saved = (() => { try { return JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch { return {}; } })();
+    const state = {
+      matchId: 0, active: false, startedAt: 0, elapsed: 0, phase: 0, nextPhaseAt: 180,
+      relic: saved.relic || 'Barbarian', appliedRelic: false, lastKills: 0, lastBedBreaks: 0,
+      lastEnemyHp: 24, lastPlayerHp: 24, damageDealt: 0, ironCollected: 0, diamondCollected: 0,
+      inventorySnapshot: null, genStage: -1, bedShield: 0, emergencyBedUsed: false,
+      items: { bridgeEgg:0,snowball:0,invis:0,jump:0,speedPot:0,popTower:0,bedBug:0,defender:0,sponge:0,tracker:0,beacon:0,bedShield:0 },
+      permanent: { shears:false, axe:0, kbStick:false, ceramic:false },
+      effects: { invis:0,jump:0,speed:0,tracker:0,shield:0 },
+      baseSpeed: null, baseDash: null, enemyBaseDetect: null,
+      customProjectiles: [], minions: [], luckyDrops: [], breadcrumbs: [],
+      beacon: null, lastLucky: 0, lastTick: performance.now(), lastSecond: -1,
+      questClaims: new Set(), streak: 0, bestStreak: 0, playerWasAlive: true, enemyWasAlive: true,
+      coreNormalised: false, selectedUtility: 'bridgeEgg', modMenuWasOpen: false, wasPaused: false
+    };
+
+    const relics = {
+      Barbarian: 'Gain rage from kills; rage upgrades sword damage.',
+      Reaper: 'Kills heal 10 HP and grant a short speed burst.',
+      Builder: 'Start with 96 extra blocks and reinforced defence tools.',
+      Archer: 'Start with a bow, 32 arrows, and faster firing.',
+      Pyro: 'Start with fireballs and gain blast resistance.',
+      Merchant: 'Advanced Arsenal prices are reduced by 20%.',
+      Jade: 'Shorter dash cooldown and stronger dash movement.',
+      Miner: 'Start with an iron pickaxe and bonus diamonds.'
+    };
+
+    const phaseInfo = [
+      { name:'Tier I', at:0, next:180, text:'Diamond and Emerald generators Tier I' },
+      { name:'Tier II', at:180, next:360, text:'Generators upgraded to Tier II' },
+      { name:'Tier III', at:360, next:540, text:'Generators upgraded to Tier III' },
+      { name:'Bed Break', at:540, next:720, text:'All beds are destroyed' },
+      { name:'Sudden Death', at:720, next:Infinity, text:'Periodic damage and faster combat' }
+    ];
+
+    const shopItems = [
+      { group:'Tools & Defence', id:'shears', name:'Permanent Shears', cost:{iron:20}, desc:'Improves wool clearing and Nuker speed.', permanent:true },
+      { group:'Tools & Defence', id:'axe', name:'Axe Upgrade', cost:{iron:10}, desc:'Upgrades through wood, iron, then diamond.', dynamic:true },
+      { group:'Tools & Defence', id:'ceramic', name:'Blastproof Ceramic', cost:{iron:24}, desc:'Adds a reinforced stone shell around your bed.', permanent:true },
+      { group:'Tools & Defence', id:'obsidian', name:'Obsidian Defence', cost:{emerald:8}, desc:'Creates a heavy two-layer bed defence.' },
+      { group:'Tools & Defence', id:'bedShield', name:'Bed Shield', cost:{diamond:4}, desc:'Absorbs one bed-destruction attempt.' },
+      { group:'Tools & Defence', id:'trapReset', name:'Trap Reset', cost:{diamond:2}, desc:'Re-arms Alarm Trap and repairs your bed.' },
+      { group:'Mobility & Potions', id:'bridgeEgg', name:'Bridge Egg', cost:{emerald:2}, desc:'Y: rapidly builds a 16-block bridge.' },
+      { group:'Mobility & Potions', id:'jump', name:'Jump Potion', cost:{emerald:1}, desc:'I: boosts dash power for 25 seconds.' },
+      { group:'Mobility & Potions', id:'speedPot', name:'Speed Potion', cost:{emerald:1}, desc:'I: boosts movement for 25 seconds.' },
+      { group:'Mobility & Potions', id:'invis', name:'Invisibility Potion', cost:{emerald:2}, desc:'I: greatly reduces bot detection for 18 seconds.' },
+      { group:'Mobility & Potions', id:'beacon', name:'Recall Beacon', cost:{emerald:4}, desc:'Set a point, then teleport back to it.' },
+      { group:'Combat Utility', id:'snowball', name:'Snowball Bundle', cost:{iron:8}, desc:'N: 8 knockback snowballs.', amount:8 },
+      { group:'Combat Utility', id:'kbStick', name:'Knockback Stick', cost:{gold:5}, desc:'Greatly strengthens melee knockback.', permanent:true },
+      { group:'Combat Utility', id:'bedBug', name:'Bedbug', cost:{gold:3}, desc:'L: releases a fast homing silverfish.', amount:1 },
+      { group:'Combat Utility', id:'defender', name:'Dream Defender', cost:{gold:5}, desc:'L: places a temporary defensive turret.', amount:1 },
+      { group:'Combat Utility', id:'popTower', name:'Pop-up Tower', cost:{iron:24}, desc:'O: instantly creates a defensive tower.', amount:1 },
+      { group:'Combat Utility', id:'sponge', name:'Sponge Bomb', cost:{gold:3}, desc:'O: clears nearby enemy wool.', amount:1 },
+      { group:'Intel', id:'tracker', name:'Player Tracker', cost:{emerald:2}, desc:'Shows the bot through the map for 90 seconds.', amount:1 }
+    ];
+
+    function save() {
+      try { localStorage.setItem(storageKey, JSON.stringify({ relic: state.relic })); } catch {}
+    }
+    function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function fmtTime(sec) { sec=Math.max(0,Math.floor(sec)); return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`; }
+    function now() { return performance.now()/1000; }
+    function alive(e) { return e && e.alive !== false && e.hp > 0; }
+    function nearBase(p=api.player) { return p && Math.hypot(p.x-(13*TILE+16),p.y-(35*TILE+16)) < 155; }
+    function toast(t) { api.toast?.(t); }
+    function costText(cost) { return Object.entries(cost).map(([k,v])=>`${v} ${k}`).join(' + '); }
+    function discounted(cost) {
+      if (state.relic !== 'Merchant') return {...cost};
+      const out={}; for(const [k,v] of Object.entries(cost)) out[k]=Math.max(1,Math.ceil(v*.8)); return out;
+    }
+    function canSpend(cost) { const p=api.player; return p && Object.entries(cost).every(([k,v])=>(p.inv?.[k]||0)>=v); }
+    function spendCost(cost) { const p=api.player;if(!p)return false;cost=discounted(cost);if(!canSpend(cost)){toast(`Need ${costText(cost)}.`);return false;}for(const[k,v]of Object.entries(cost))p.inv[k]-=v;return true; }
+
+    function injectRelicField() {
+      const options = document.querySelector('#centerCard .menuOptions');
+      if (!options || document.getElementById('abv6RelicField')) return;
+      const field=document.createElement('div');field.className='menuField';field.id='abv6RelicField';
+      field.innerHTML=`<label for="abv6Relic">Relic / kit passive</label><select id="abv6Relic">${Object.keys(relics).map(x=>`<option ${x===state.relic?'selected':''}>${x}</option>`).join('')}</select><small id="abv6RelicDesc">${esc(relics[state.relic])}</small>`;
+      options.appendChild(field);
+      field.querySelector('select').onchange=e=>{state.relic=e.target.value;field.querySelector('small').textContent=relics[state.relic];save();};
+    }
+
+    function buildArsenal() {
+      const groups=[...new Set(shopItems.map(x=>x.group))];
+      arsenalBody.innerHTML=groups.map(group=>`<div class="abv6ShopTitle">${esc(group)}</div><div class="abv6ShopGrid">${shopItems.filter(x=>x.group===group).map(item=>`<div class="abv6Buy" data-item="${item.id}"><b>${esc(item.name)}</b><span>${esc(item.desc)}</span><small>${esc(costText(discounted(item.cost)))}</small></div>`).join('')}</div>`).join('');
+      arsenalBody.querySelectorAll('[data-item]').forEach(el=>el.onclick=()=>buyAdvanced(el.dataset.item));
+    }
+
+    function openArsenal(force) {
+      const p=api.player;
+      if(!p||api.state!=='playing')return;
+      const menu=window.AetherBedsMenuV5;
+      const anywhere=!!menu?.toggles?.ShopAnywhere;
+      if(!anywhere&&!nearBase()){toast('Advanced Arsenal is only available at your base.');return;}
+      const should=typeof force==='boolean'?force:!arsenal.classList.contains('open');
+      const modGui=document.getElementById('abv5')||document.getElementById('abv4');
+      if(should){state.wasPaused=!!api.paused;state.modMenuWasOpen=!!(modGui&&getComputedStyle(modGui).display!=='none');if(modGui)modGui.style.display='none';}
+      arsenal.classList.toggle('open',should); api.paused=should?true:state.wasPaused;
+      if(!should&&state.modMenuWasOpen&&modGui)modGui.style.display='block';
+      buildArsenal();
+    }
+    document.getElementById('abv6ArsenalClose').onclick=()=>openArsenal(false);
+    arsenal.addEventListener('mousedown',e=>{if(e.target===arsenal)openArsenal(false);});
+
+    function buyAdvanced(id) {
+      const p=api.player;if(!p)return;
+      const item=shopItems.find(x=>x.id===id);if(!item)return;
+      let cost={...item.cost};
+      if(id==='axe') cost = state.permanent.axe===0?{iron:10}:state.permanent.axe===1?{gold:3}:{emerald:3};
+      if(id==='axe'&&state.permanent.axe>=3){toast('Axe already maxed.');return;}
+      if(item.permanent && id!=='axe' && state.permanent[id]){toast(`${item.name} already owned.`);return;}
+      if(!spendCost(cost))return;
+      switch(id){
+        case 'shears':state.permanent.shears=true;break;
+        case 'axe':state.permanent.axe++;break;
+        case 'ceramic':state.permanent.ceramic=true;fortifyBed(1);break;
+        case 'obsidian':fortifyBed(2);break;
+        case 'bedShield':state.bedShield++;state.items.bedShield++;break;
+        case 'trapReset':p.alarmTrap=true;if(api.redBed?.alive)api.redBed.hp=Math.min(api.redBed.maxHp,api.redBed.hp+12);break;
+        case 'kbStick':state.permanent.kbStick=true;break;
+        default:state.items[id]=(state.items[id]||0)+(item.amount||1);
+      }
+      toast(`${item.name} purchased.`);buildArsenal();
+    }
+
+    function fortifyBed(layers=1) {
+      const bed=api.redBed;if(!bed)return;
+      const cx=api.gx(bed.x+bed.w/2),cy=api.gy(bed.y+bed.h/2);
+      for(let layer=1;layer<=layers+1;layer++)for(let y=-layer;y<=layer;y++)for(let x=-layer;x<=layer;x++){
+        if(Math.abs(x)!==layer&&Math.abs(y)!==layer)continue;
+        const tx=cx+x,ty=cy+y;if(!api.inBounds(tx,ty)||api.getTile(tx,ty)!==C.VOID)continue;
+        const c=api.centerOf(tx,ty);if(api.pointNearRect(c.x,c.y,bed,2))continue;
+        api.map[api.idx(tx,ty)]=C.STONE;
+      }
+      bed.hp=Math.min((bed.maxHp||22)+layers*10,(bed.hp||22)+layers*10);bed.maxHp=Math.max(bed.maxHp||22,bed.hp);
+      api.burst?.(bed.x+bed.w/2,bed.y+bed.h/2,'#b9becf',24);
+    }
+
+    function useBridgeEgg() {
+      const p=api.player;if(!alive(p)||state.items.bridgeEgg<=0){toast('No Bridge Eggs.');return;}
+      state.items.bridgeEgg--;const a=Math.atan2(api.mouse.worldY-p.y,api.mouse.worldX-p.x);let i=1;
+      const timer=setInterval(()=>{if(i>18){clearInterval(timer);return;}const x=p.x+Math.cos(a)*TILE*i,y=p.y+Math.sin(a)*TILE*i;api.gamePlaceBlockAt(x,y,'red',false);i++;},42);
+      toast('Bridge Egg launched.');
+    }
+    function useSnowball() {
+      const p=api.player;if(!alive(p)||state.items.snowball<=0){toast('No snowballs.');return;}
+      state.items.snowball--;const a=Math.atan2(api.mouse.worldY-p.y,api.mouse.worldX-p.x);
+      state.customProjectiles.push({kind:'snowball',x:p.x,y:p.y,vx:Math.cos(a)*780,vy:Math.sin(a)*780,life:1.5,r:7});
+    }
+    function usePotion() {
+      if(state.items.invis>0){state.items.invis--;state.effects.invis=18;toast('Invisibility active for 18 seconds.');return;}
+      if(state.items.speedPot>0){state.items.speedPot--;state.effects.speed=25;toast('Speed active for 25 seconds.');return;}
+      if(state.items.jump>0){state.items.jump--;state.effects.jump=25;toast('Jump/dash boost active for 25 seconds.');return;}
+      toast('No potion available.');
+    }
+    function useTowerOrSponge() {
+      if(state.items.popTower>0){state.items.popTower--;popTower();return;}
+      if(state.items.sponge>0){state.items.sponge--;spongeBomb();return;}
+      toast('No pop-up tower or sponge.');
+    }
+    function popTower() {
+      const p=api.player,cx=api.gx(p.x),cy=api.gy(p.y);
+      const cells=[];for(let r=1;r<=2;r++)for(let y=-r;y<=r;y++)for(let x=-r;x<=r;x++)if(Math.abs(x)===r||Math.abs(y)===r)cells.push([cx+x,cy+y]);
+      cells.push([cx-2,cy],[cx+2,cy],[cx,cy-2],[cx,cy+2]);
+      cells.forEach(([x,y],i)=>setTimeout(()=>api.gamePlaceBlockAt(x*TILE+16,y*TILE+16,'red',false),i*16));toast('Pop-up Tower deployed.');
+    }
+    function spongeBomb() {
+      const p=api.player;let n=0;for(let y=api.gy(p.y)-4;y<=api.gy(p.y)+4;y++)for(let x=api.gx(p.x)-4;x<=api.gx(p.x)+4;x++)if(api.getTile(x,y)===C.BLUE_BLOCK){api.map[api.idx(x,y)]=C.VOID;n++;}toast(`Sponge cleared ${n} enemy blocks.`);
+    }
+    function useMinion() {
+      const p=api.player;if(state.items.bedBug>0){state.items.bedBug--;state.minions.push({type:'bedbug',x:p.x,y:p.y,life:18,cd:0});toast('Bedbug released.');return;}
+      if(state.items.defender>0){state.items.defender--;state.minions.push({type:'defender',x:p.x,y:p.y,life:28,cd:0});toast('Dream Defender placed.');return;}
+      toast('No minion available.');
+    }
+    function useTracker() {if(state.items.tracker<=0){toast('No tracker.');return;}state.items.tracker--;state.effects.tracker=90;toast('Enemy tracking active for 90 seconds.');}
+    function useBeacon() {
+      const p=api.player;if(!p)return;
+      if(state.beacon){api.gameTeleportEntity(p,state.beacon.x,state.beacon.y);api.syncGameAction?.(1600);state.beacon=null;toast('Recalled to beacon.');return;}
+      if(state.items.beacon<=0){toast('No Recall Beacon.');return;}state.items.beacon--;state.beacon={x:p.x,y:p.y};toast('Recall point set. Press H to return.');
+    }
+
+    function resetMatch() {
+      state.matchId++;state.active=true;state.startedAt=performance.now();state.elapsed=0;state.phase=0;state.nextPhaseAt=180;state.appliedRelic=false;
+      state.lastKills=api.player?.kills||0;state.lastBedBreaks=api.player?.bedBreaks||0;state.lastEnemyHp=api.enemy?.hp||24;state.lastPlayerHp=api.player?.hp||24;
+      state.damageDealt=0;state.ironCollected=api.player?.inv?.iron||0;state.diamondCollected=api.player?.inv?.diamond||0;state.questClaims.clear();state.streak=0;
+      state.items={bridgeEgg:0,snowball:0,invis:0,jump:0,speedPot:0,popTower:0,bedBug:0,defender:0,sponge:0,tracker:0,beacon:0,bedShield:0};
+      state.permanent={shears:false,axe:0,kbStick:false,ceramic:false};state.effects={invis:0,jump:0,speed:0,tracker:0,shield:0};
+      state.customProjectiles=[];state.minions=[];state.luckyDrops=[];state.breadcrumbs=[];state.beacon=null;state.genStage=-1;state.bedShield=0;state.emergencyBedUsed=false;state.coreNormalised=false;
+      applyRelic();toast(`Relic active: ${state.relic}.`);
+    }
+
+    function applyRelic() {
+      const p=api.player;if(!p||state.appliedRelic)return;state.appliedRelic=true;state.baseSpeed=p.speed;state.baseDash=p.dashBonus||0;
+      switch(state.relic){
+        case 'Builder':p.blocks+=96;state.permanent.shears=true;state.permanent.ceramic=true;fortifyBed(1);break;
+        case 'Archer':p.bow=true;p.arrows+=32;p.bowSpeedBonus=(p.bowSpeedBonus||0)+.15;break;
+        case 'Pyro':p.fireballs+=4;p.protection=Math.max(p.protection||0,1);break;
+        case 'Jade':p.dashBonus=(p.dashBonus||0)+.7;p.dashCd=0;break;
+        case 'Miner':p.pickaxe=Math.max(p.pickaxe||0,2);p.inv.diamond+=2;break;
+        case 'Barbarian':p._xRage=0;break;
+      }
+    }
+
+    function phaseFor(t){if(t>=720)return 4;if(t>=540)return 3;if(t>=360)return 2;if(t>=180)return 1;return 0;}
+    function setPhase(stage) {
+      if(stage===state.phase&&state.genStage===stage)return;state.phase=stage;
+      const multipliers=[1,.72,.50,.50,.44];
+      if(stage!==state.genStage){
+        for(const g of api.generators||[]){if(!g._v6OriginalRate)g._v6OriginalRate=g.rate;g.rate=Math.max(.12,g._v6OriginalRate*multipliers[Math.min(stage,multipliers.length-1)]);g.max=Math.max(g.max||4,(g.type==='iron'?24:g.type==='gold'?12:8)+stage*3);}
+        state.genStage=stage;
+      }
+      if(stage===1)toast('Generator Tier II activated.');
+      if(stage===2)toast('Generator Tier III activated.');
+      if(stage===3)destroyAllBeds();
+      if(stage===4)toast('Sudden Death! Periodic damage is active.');
+    }
+    function destroyAllBeds() {
+      for(const bed of [api.redBed,api.blueBed]){
+        if(!bed?.alive)continue;
+        if(bed===api.redBed&&state.bedShield>0){state.bedShield--;toast('Bed Shield absorbed automatic destruction.');continue;}
+        bed.alive=false;bed.hp=0;api.burst?.(bed.x+bed.w/2,bed.y+bed.h/2,bed.team==='red'?'#ff5f78':'#61a8ff',30);
+      }
+    }
+
+    function updateQuests() {
+      const p=api.player,e=api.enemy;if(!p||!e)return;
+      if(e.hp<state.lastEnemyHp&&alive(e))state.damageDealt+=state.lastEnemyHp-e.hp;
+      state.lastEnemyHp=e.hp;state.lastPlayerHp=p.hp;
+      const iron=p.inv?.iron||0,diamond=p.inv?.diamond||0;
+      state.ironCollected=Math.max(state.ironCollected,iron);state.diamondCollected=Math.max(state.diamondCollected,diamond);
+      claimQuest('iron',state.ironCollected>=32,()=>{p.inv.gold+=2;toast('Quest complete: Iron Collector +2 gold.');});
+      claimQuest('damage',state.damageDealt>=40,()=>{p.inv.diamond+=2;toast('Quest complete: Fighter +2 diamonds.');});
+      claimQuest('diamonds',state.diamondCollected>=4,()=>{p.inv.emerald+=1;toast('Quest complete: Diamond Runner +1 emerald.');});
+      claimQuest('bed',(p.bedBreaks||0)>0,()=>{p.inv.emerald+=2;toast('Quest complete: Bed Breaker +2 emeralds.');});
+    }
+    function claimQuest(id,condition,reward){if(condition&&!state.questClaims.has(id)){state.questClaims.add(id);reward();}}
+
+    function handleKillsAndDeaths() {
+      const p=api.player,e=api.enemy;if(!p||!e)return;
+      if((p.kills||0)>state.lastKills){const gained=p.kills-state.lastKills;state.lastKills=p.kills;state.streak+=gained;state.bestStreak=Math.max(state.bestStreak,state.streak);
+        if(state.relic==='Reaper'){p.hp=Math.min(p.maxHp,p.hp+10);state.effects.speed=Math.max(state.effects.speed,6);}
+        if(state.relic==='Barbarian'){p._xRage=Math.min(100,(p._xRage||0)+20*gained);p.sword=Math.max(p.sword,Math.min(3,Math.floor((p._xRage||0)/25)));}
+        if(state.streak===3){p.inv.gold+=3;toast('3 kill streak: +3 gold.');}
+        if(state.streak===5){p.inv.emerald+=2;toast('5 kill streak: +2 emeralds.');}
+      }
+      if(state.playerWasAlive&&!alive(p)){state.streak=0;if(window.AetherBedsMenuV5?.toggles?.InventoryKeeper&&state.inventorySnapshot){setTimeout(()=>restoreInventory(),100);} }
+      state.playerWasAlive=alive(p);state.enemyWasAlive=alive(e);
+      if(alive(p))state.inventorySnapshot={inv:{...p.inv},blocks:p.blocks,arrows:p.arrows,fireballs:p.fireballs,tnt:p.tnt,pearls:p.pearls,gapples:p.gapples};
+    }
+    function restoreInventory(){const p=api.player,s=state.inventorySnapshot;if(!p||!s)return;Object.assign(p.inv,s.inv);for(const k of ['blocks','arrows','fireballs','tnt','pearls','gapples'])p[k]=Math.max(p[k]||0,s[k]||0);toast('InventoryKeeper restored your items.');}
+
+    function updateEffects(dt) {
+      const p=api.player,e=api.enemy;if(!p||!e)return;
+      for(const k of Object.keys(state.effects))state.effects[k]=Math.max(0,state.effects[k]-dt);
+      if(state.baseSpeed==null)state.baseSpeed=p.speed;
+      const menu=window.AetherBedsMenuV5;
+      if(!menu?.toggles?.Speed){const target=(state.baseSpeed||225)+(state.effects.speed>0?45:0);if(Math.abs(p.speed-target)>2&&state.effects.speed>0)p.speed=Math.max(p.speed,target);}
+      if(state.effects.jump>0){p.dashBonus=Math.max(p.dashBonus||0,(state.baseDash||0)+1.1);p.dashCd=Math.min(p.dashCd||0,.18);}
+      if(state.effects.invis>0){if(state.enemyBaseDetect==null)state.enemyBaseDetect=e.profile?.detect||285;if(e.profile)e.profile.detect=Math.min(e.profile.detect,55);p.invuln=Math.max(p.invuln||0,.08);}else if(state.enemyBaseDetect!=null&&e.profile){e.profile.detect=state.enemyBaseDetect;state.enemyBaseDetect=null;}
+    }
+
+    function spawnLuckyDrop() {
+      const g=(api.generators||[]).find(x=>x.type==='emerald');if(!g)return;
+      state.luckyDrops.push({x:g.x+(Math.random()-.5)*120,y:g.y+(Math.random()-.5)*120,life:35,spin:0});toast('A Lucky Crate spawned at mid!');
+    }
+    function updateLucky(dt) {
+      if(state.elapsed-state.lastLucky>45){state.lastLucky=state.elapsed;spawnLuckyDrop();}
+      const p=api.player;for(let i=state.luckyDrops.length-1;i>=0;i--){const d=state.luckyDrops[i];d.life-=dt;d.spin+=dt;if(d.life<=0){state.luckyDrops.splice(i,1);continue;}if(p&&Math.hypot(p.x-d.x,p.y-d.y)<34){const roll=Math.random();if(roll<.25){p.inv.emerald+=2;toast('Lucky Crate: +2 emeralds.');}else if(roll<.5){p.fireballs+=3;toast('Lucky Crate: +3 fireballs.');}else if(roll<.75){p.blocks+=64;toast('Lucky Crate: +64 blocks.');}else{p.inv.diamond+=4;toast('Lucky Crate: +4 diamonds.');}state.luckyDrops.splice(i,1);}}
+    }
+
+    function updateCustomProjectiles(dt) {
+      const e=api.enemy,p=api.player;
+      for(let i=state.customProjectiles.length-1;i>=0;i--){const q=state.customProjectiles[i];q.x+=q.vx*dt;q.y+=q.vy*dt;q.life-=dt;if(q.life<=0||!api.inBounds(api.gx(q.x),api.gy(q.y))){state.customProjectiles.splice(i,1);continue;}if(q.kind==='snowball'&&alive(e)&&Math.hypot(q.x-e.x,q.y-e.y)<e.r+q.r){const a=Math.atan2(e.y-q.y,e.x-q.x);e.vx+=Math.cos(a)*430;e.vy+=Math.sin(a)*430;api.gameDamageEntity(e,1,'red');state.customProjectiles.splice(i,1);}}
+    }
+    function updateMinions(dt) {
+      const e=api.enemy;if(!e)return;
+      for(let i=state.minions.length-1;i>=0;i--){const m=state.minions[i];m.life-=dt;m.cd-=dt;if(m.life<=0){state.minions.splice(i,1);continue;}
+        if(m.type==='bedbug'&&alive(e)){const a=Math.atan2(e.y-m.y,e.x-m.x);m.x+=Math.cos(a)*260*dt;m.y+=Math.sin(a)*260*dt;if(Math.hypot(m.x-e.x,m.y-e.y)<28&&m.cd<=0){api.gameDamageEntity(e,3.5,'red');m.cd=.55;}}
+        if(m.type==='defender'&&alive(e)&&Math.hypot(m.x-e.x,m.y-e.y)<360&&m.cd<=0){m.cd=.7;const a=Math.atan2(e.y-m.y,e.x-m.x);state.customProjectiles.push({kind:'bolt',x:m.x,y:m.y,vx:Math.cos(a)*700,vy:Math.sin(a)*700,life:.8,r:5});api.gameDamageEntity(e,2.6,'red');}
+      }
+    }
+
+    function normaliseGodProfile() {
+      const e=api.enemy;if(!e||state.coreNormalised)return;
+      if(e.profile?.label==='God'){
+        e.maxHp=Math.min(e.maxHp||24,24);e.hp=Math.min(e.hp||24,e.maxHp);e.speed=Math.min(e.speed||225,225);e.blocks=Math.min(e.blocks||32,48);e.sword=Math.min(e.sword||0,0);e.armor=Math.min(e.armor||0,0);e.pickaxe=Math.min(e.pickaxe||0,0);e.sharpness=0;e.protection=0;e.haste=0;e.forge=0;e.fireballs=0;e.tnt=0;e.pearls=0;e.arrows=0;e.bow=false;toast('God difficulty normalised: skill-only, no hidden stat advantage.');
+      }
+      state.coreNormalised=true;
+    }
+
+    function updateStatus() {
+      const p=api.player;if(!p){status.innerHTML='';return;}
+      const ph=phaseInfo[state.phase];const next=ph.next===Infinity?'Final phase':`${fmtTime(ph.next-state.elapsed)} until next event`;
+      eventBar.innerHTML=`<b>${esc(ph.name)}</b> · ${esc(ph.text)} · ${esc(next)}`;
+      const q=[['Iron Collector',state.ironCollected,32,'iron'],['Fighter',Math.floor(state.damageDealt),40,'damage'],['Diamond Runner',state.diamondCollected,4,'diamonds'],['Bed Breaker',p.bedBreaks||0,1,'bed']];
+      const itemText=Object.entries(state.items).filter(([,v])=>v>0).map(([k,v])=>`${k}:${v}`).join(' · ')||'No advanced consumables';
+      const effects=Object.entries(state.effects).filter(([,v])=>v>0).map(([k,v])=>`${k} ${Math.ceil(v)}s`).join(' · ')||'none';
+      status.innerHTML=`<b>Relic:</b> ${esc(state.relic)} · <b>Streak:</b> ${state.streak}<br><b>Advanced:</b> ${esc(itemText)}<br><b>Effects:</b> ${esc(effects)}<br>${q.map(([n,v,max,id])=>`<span class="${state.questClaims.has(id)?'abv6Good':''}">${esc(n)} ${Math.min(v,max)}/${max}</span>`).join(' · ')}<br><span class="abv6Warn">U Arsenal · Y Egg · N Snowball · I Potion · O Tower/Sponge · L Minion · H Beacon · X Tracker</span>`;
+    }
+
+    function coreTick() {
+      const t=performance.now(),dt=Math.min(.1,(t-state.lastTick)/1000||0);state.lastTick=t;
+      injectRelicField();
+      const playing=api.state==='playing';
+      if(playing&&!state.active)resetMatch();
+      if(!playing&&state.active){state.active=false;arsenal.classList.remove('open');}
+      if(!playing)return;
+      state.elapsed=(t-state.startedAt)/1000;setPhase(phaseFor(state.elapsed));normaliseGodProfile();applyRelic();updateEffects(dt);updateQuests();handleKillsAndDeaths();updateLucky(dt);updateCustomProjectiles(dt);updateMinions(dt);
+      if(state.phase===4&&Math.floor(state.elapsed)%8===0&&state.lastSecond!==Math.floor(state.elapsed)){state.lastSecond=Math.floor(state.elapsed);if(alive(api.player))api.player.hp=Math.max(1,api.player.hp-1);if(alive(api.enemy))api.enemy.hp=Math.max(1,api.enemy.hp-1);}
+      if(api.player&&Math.floor(state.elapsed*2)!==Math.floor((state.elapsed-dt)*2))state.breadcrumbs.push({x:api.player.x,y:api.player.y,life:8});
+      state.breadcrumbs.forEach(b=>b.life-=dt);state.breadcrumbs=state.breadcrumbs.filter(b=>b.life>0).slice(-120);updateStatus();
+    }
+    setInterval(coreTick,50);
+
+    function resizeOverlay(){const dpr=Math.max(1,Math.min(2,devicePixelRatio||1));overlay.width=Math.floor(innerWidth*dpr);overlay.height=Math.floor(innerHeight*dpr);overlay.style.width=innerWidth+'px';overlay.style.height=innerHeight+'px';octx.setTransform(dpr,0,0,dpr,0,0);}
+    addEventListener('resize',resizeOverlay);resizeOverlay();
+    function screen(x,y){return{x:x-api.camX,y:y-api.camY};}
+    function drawOverlay() {
+      requestAnimationFrame(drawOverlay);octx.clearRect(0,0,innerWidth,innerHeight);const menu=window.AetherBedsMenuV5;if(!menu||api.state!=='playing')return;
+      const p=api.player,e=api.enemy;
+      if(menu.toggles.Breadcrumbs){octx.save();octx.strokeStyle='rgba(139,233,255,.45)';octx.lineWidth=2;octx.beginPath();state.breadcrumbs.forEach((b,i)=>{const s=screen(b.x,b.y);i?octx.lineTo(s.x,s.y):octx.moveTo(s.x,s.y)});octx.stroke();octx.restore();}
+      if(e&&(menu.toggles.ESP||state.effects.tracker>0)){const s=screen(e.x,e.y);octx.save();octx.strokeStyle='#61a8ff';octx.lineWidth=2;octx.strokeRect(s.x-22,s.y-28,44,56);octx.fillStyle='#edf2ff';octx.font='800 12px Inter,system-ui';octx.textAlign='center';octx.fillText(`${e.name||'Blue Bot'} ${Math.ceil(e.hp)}/${e.maxHp}`,s.x,s.y-34);octx.restore();}
+      if(e&&menu.toggles.Tracers&&p){const ps=screen(p.x,p.y),es=screen(e.x,e.y);octx.save();octx.strokeStyle='rgba(97,168,255,.8)';octx.lineWidth=1.5;octx.beginPath();octx.moveTo(ps.x,ps.y);octx.lineTo(es.x,es.y);octx.stroke();octx.restore();}
+      if(menu.toggles.BedESP){for(const bed of [api.redBed,api.blueBed]){if(!bed)continue;const s=screen(bed.x+bed.w/2,bed.y+bed.h/2);octx.save();octx.strokeStyle=bed.team==='red'?'#ff5f78':'#61a8ff';octx.setLineDash([5,4]);octx.strokeRect(s.x-40,s.y-28,80,56);octx.setLineDash([]);octx.restore();}}
+      if(menu.toggles.ResourceESP){octx.save();octx.font='800 10px Inter';octx.textAlign='center';for(const r of api.resources||[]){const s=screen(r.x,r.y);octx.fillStyle=r.type==='emerald'?'#72ff9d':r.type==='diamond'?'#8be9ff':r.type==='gold'?'#ffd166':'#edf2ff';octx.fillText(r.type.toUpperCase(),s.x,s.y-10);}octx.restore();}
+      if(menu.toggles.ProjectileESP){octx.save();octx.strokeStyle='#ffd166';for(const q of api.projectiles||[]){const s=screen(q.x,q.y);octx.beginPath();octx.arc(s.x,s.y,10,0,Math.PI*2);octx.stroke();}octx.restore();}
+      for(const q of state.customProjectiles){const s=screen(q.x,q.y);octx.fillStyle=q.kind==='snowball'?'#edf2ff':'#ffd166';octx.beginPath();octx.arc(s.x,s.y,q.r||5,0,Math.PI*2);octx.fill();}
+      for(const m of state.minions){const s=screen(m.x,m.y);octx.fillStyle=m.type==='bedbug'?'#b9becf':'#ffd166';octx.beginPath();octx.arc(s.x,s.y,m.type==='bedbug'?8:14,0,Math.PI*2);octx.fill();}
+      for(const d of state.luckyDrops){const s=screen(d.x,d.y);octx.save();octx.translate(s.x,s.y);octx.rotate(d.spin);octx.fillStyle='#ffd166';octx.fillRect(-11,-11,22,22);octx.strokeStyle='#fff0b5';octx.strokeRect(-11,-11,22,22);octx.restore();}
+      if(state.beacon){const s=screen(state.beacon.x,state.beacon.y);octx.save();octx.strokeStyle='#8be9ff';octx.lineWidth=2;octx.beginPath();octx.arc(s.x,s.y,18+Math.sin(performance.now()/180)*4,0,Math.PI*2);octx.stroke();octx.restore();}
+      if(menu.toggles.Minimap)drawMinimap();
+    }
+    function drawMinimap(){const w=210,h=132,x=innerWidth-w-18,y=innerHeight-h-70;octx.save();octx.fillStyle='rgba(5,8,18,.82)';octx.strokeStyle='rgba(139,233,255,.28)';octx.fillRect(x,y,w,h);octx.strokeRect(x,y,w,h);const sx=w/C.WORLD_W,sy=h/C.WORLD_H;for(const g of api.generators||[]){octx.fillStyle=g.type==='emerald'?'#72ff9d':g.type==='diamond'?'#8be9ff':g.type==='gold'?'#ffd166':'#edf2ff';octx.fillRect(x+g.x*sx-2,y+g.y*sy-2,4,4);}for(const [ent,col] of [[api.player,'#ff5f78'],[api.enemy,'#61a8ff']])if(ent){octx.fillStyle=col;octx.beginPath();octx.arc(x+ent.x*sx,y+ent.y*sy,4,0,Math.PI*2);octx.fill();}octx.fillStyle='#edf2ff';octx.font='800 10px Inter';octx.fillText('MINIMAP',x+8,y+13);octx.restore();}
+    drawOverlay();
+
+    addEventListener('keydown',e=>{
+      if(['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target?.tagName))return;
+      if(e.code==='KeyU'){e.preventDefault();openArsenal();}
+      if(api.state!=='playing'||api.paused)return;
+      if(e.code==='KeyY')useBridgeEgg();
+      if(e.code==='KeyN')useSnowball();
+      if(e.code==='KeyI')usePotion();
+      if(e.code==='KeyO')useTowerOrSponge();
+      if(e.code==='KeyL')useMinion();
+      if(e.code==='KeyH')useBeacon();
+      if(e.code==='KeyX')useTracker();
+    },true);
+
+    /* ------------------------- EXTRA MOD MODULES ------------------------- */
+    const extraDefaults = {
+      Criticals:{range:115,damage:3.5,delay:180}, Velocity:{horizontal:.18,vertical:.18}, TargetStrafe:{radius:82,speed:32,direction:1}, AimAssist:{strength:.25,range:650}, BedAura:{range:210,damage:3,delay:140}, OneTap:{damage:999},
+      Fly:{speed:340,leaveTrail:false}, LongJump:{power:760,interval:650}, AutoBridge:{ahead:1.1,consume:false}, ClutchBot:{radius:5}, Phase:{speedMultiplier:1.35},
+      GodMode:{minimumHp:24}, Regen:{heal:2,interval:180}, AutoGapple:{threshold:14}, AutoPearl:{threshold:.18}, InventoryKeeper:{}, InfiniteResources:{amount:999}, ShopAnywhere:{},
+      Nuker:{range:150,delay:70,stone:true}, BedNuker:{range:9999,damage:6,delay:90}, GeneratorBoost:{multiplier:.18}, ResourceVacuum:{range:1400,speed:85}, FreezeBot:{}, BedReviver:{health:30},
+      ESP:{}, Tracers:{}, Minimap:{}, ResourceESP:{}, BedESP:{}, ProjectileESP:{}, Breadcrumbs:{}, Fullbright:{brightness:1.45},
+      AutoFarm:{delay:180}, AutoRush:{speed:1,scaffold:true}, AutoDefend:{triggerRange:410}, AntiProjectile:{radius:150}, AutoPotion:{threshold:13}, AutoQuest:{},
+      ResourceDupe:{amount:25,interval:400}, EnemyDisabler:{slow:.05}, ClickTeleport:{}, Tower:{height:4}, PanicButton:{}
+    };
+    const extraDescriptions = {
+      Criticals:'Adds configurable bonus damage when the bot is inside range.',Velocity:'Reduces incoming knockback.',TargetStrafe:'Automatically circles the bot while fighting.',AimAssist:'Smoothly pulls your crosshair toward the bot.',BedAura:'Damages the enemy bed automatically inside range.',OneTap:'Makes the next nearby damage pulse lethal.',
+      Fly:'Creates temporary support under you and grants free directional flight.',LongJump:'Repeatedly launches you toward the mouse.',AutoBridge:'Places blocks in front of your movement.',ClutchBot:'Emergency block clutch when leaving the map.',Phase:'Movement accelerator for crossing structures.',
+      GodMode:'Continuously restores HP and invulnerability.',Regen:'Fast passive healing.',AutoGapple:'Uses golden apples automatically at low HP.',AutoPearl:'Teleports to safety when ground coverage is low.',InventoryKeeper:'Restores inventory after death.',InfiniteResources:'Keeps all resources and utilities filled.',ShopAnywhere:'Opens both shops from anywhere.',
+      Nuker:'Breaks nearby enemy wool and optionally stone.',BedNuker:'Damages the enemy bed from extreme range.',GeneratorBoost:'Greatly accelerates every generator.',ResourceVacuum:'Pulls all dropped resources toward you.',FreezeBot:'Freezes the bot in place.',BedReviver:'Rebuilds your bed if destroyed.',
+      ESP:'Draws a box and health label around the bot.',Tracers:'Draws a line from you to the bot.',Minimap:'Shows a compact live tactical map.',ResourceESP:'Labels dropped resources.',BedESP:'Highlights both beds.',ProjectileESP:'Highlights incoming projectiles.',Breadcrumbs:'Draws your recent movement path.',Fullbright:'Brightens the entire game canvas.',
+      AutoFarm:'Teleports through loose resources and returns.',AutoRush:'Drives toward the enemy bed and auto-bridges.',AutoDefend:'Returns to base when the bot approaches your bed.',AntiProjectile:'Deletes hostile projectiles near you.',AutoPotion:'Automatically consumes advanced potions.',AutoQuest:'Automatically grants completed quest rewards.',
+      ResourceDupe:'Spawns selected quantities of every resource.',EnemyDisabler:'Severely slows the bot without freezing it.',ClickTeleport:'Right-click the world to teleport.',Tower:'Builds a vertical-style defensive ring around you.',PanicButton:'Turns on survival modules and disables risky movement modules.'
+    };
+    const extraCategories = {
+      'Combat +':['Criticals','Velocity','TargetStrafe','AimAssist','BedAura','OneTap'],
+      'Movement +':['Fly','LongJump','AutoBridge','ClutchBot','Phase'],
+      'Player +':['GodMode','Regen','AutoGapple','AutoPearl','InventoryKeeper','InfiniteResources','ShopAnywhere'],
+      'World +':['Nuker','BedNuker','GeneratorBoost','ResourceVacuum','FreezeBot','BedReviver'],
+      'Visual +':['ESP','Tracers','Minimap','ResourceESP','BedESP','ProjectileESP','Breadcrumbs','Fullbright'],
+      'Automation +':['AutoFarm','AutoRush','AutoDefend','AntiProjectile','AutoPotion','AutoQuest'],
+      'Exploit +':['ResourceDupe','EnemyDisabler','ClickTeleport','Tower','PanicButton']
+    };
+    const extraBinds={GodMode:'F3',Fly:'F4',AutoBridge:'F5',BedNuker:'F2',ESP:'F6',Minimap:'F9',ClickTeleport:'F10',PanicButton:'F7'};
+    const extraLoops=new Map();
+    function startLoop(name,ms,fn){stopLoop(name);const run=()=>{try{fn();}catch(err){console.warn('[AetherBeds v6]',name,err)}extraLoops.set(name,setTimeout(run,Math.max(8,typeof ms==='function'?ms():ms)));};run();}
+    function stopLoop(name){const id=extraLoops.get(name);if(id)clearTimeout(id);extraLoops.delete(name);}
+    function addModule(menu,name,def){
+      menu.cfg[name]=Object.assign({},def,saved.extraCfg?.[name]||{});if(!(name in menu.keybinds))menu.keybinds[name]=extraBinds[name]||'';
+      const p=()=>api.player,e=()=>api.enemy;
+      const mods={
+        Criticals:{on:()=>startLoop(name,()=>menu.cfg[name].delay,()=>{if(alive(p())&&alive(e())&&api.dist(p().x,p().y,e().x,e().y)<=menu.cfg[name].range)api.damageEntity(e(),menu.cfg[name].damage,'red')}),off:()=>stopLoop(name)},
+        Velocity:{on:()=>startLoop(name,16,()=>{if(p()){p().vx*=menu.cfg[name].horizontal;p().vy*=menu.cfg[name].vertical}}),off:()=>stopLoop(name)},
+        TargetStrafe:{on:()=>startLoop(name,16,()=>{if(!alive(p())||!alive(e()))return;const a=Math.atan2(p().y-e().y,p().x-e().x)+menu.cfg[name].direction*.11;const tx=e().x+Math.cos(a)*menu.cfg[name].radius,ty=e().y+Math.sin(a)*menu.cfg[name].radius;p().vx+=(tx-p().x)*menu.cfg[name].speed*.012;p().vy+=(ty-p().y)*menu.cfg[name].speed*.012;}),off:()=>stopLoop(name)},
+        AimAssist:{on:()=>startLoop(name,16,()=>{if(!alive(e())||!p()||api.dist(p().x,p().y,e().x,e().y)>menu.cfg[name].range)return;const s=menu.cfg[name].strength;api.mouse.worldX+=(e().x-api.mouse.worldX)*s;api.mouse.worldY+=(e().y-api.mouse.worldY)*s;}),off:()=>stopLoop(name)},
+        BedAura:{on:()=>startLoop(name,()=>menu.cfg[name].delay,()=>{const b=api.blueBed;if(!b?.alive||!p())return;const d=api.dist(p().x,p().y,b.x+b.w/2,b.y+b.h/2);if(d<=menu.cfg[name].range){b.hp-=menu.cfg[name].damage;if(b.hp<=0)api.forceBreakBed('blue')}}),off:()=>stopLoop(name)},
+        OneTap:{on:()=>startLoop(name,90,()=>{if(alive(e())&&alive(p())&&api.dist(p().x,p().y,e().x,e().y)<140)api.damageEntity(e(),menu.cfg[name].damage,'red')}),off:()=>stopLoop(name)},
+        Fly:{on:()=>startLoop(name,16,()=>{const q=p();if(!alive(q))return;let dx=0,dy=0;const k=api.keys;if(k.has('w')||k.has('arrowup'))dy--;if(k.has('s')||k.has('arrowdown'))dy++;if(k.has('a')||k.has('arrowleft'))dx--;if(k.has('d')||k.has('arrowright'))dx++;const l=Math.hypot(dx,dy)||1;q.vx=dx/l*menu.cfg[name].speed;q.vy=dy/l*menu.cfg[name].speed;const tx=api.gx(q.x),ty=api.gy(q.y);if(api.getTile(tx,ty)===C.VOID)api.forcePlaceBlockAt(q.x,q.y,'red',false)}),off:()=>stopLoop(name)},
+        LongJump:{on:()=>startLoop(name,()=>menu.cfg[name].interval,()=>{const q=p();if(!alive(q))return;const a=Math.atan2(api.mouse.worldY-q.y,api.mouse.worldX-q.x);q.vx=Math.cos(a)*menu.cfg[name].power;q.vy=Math.sin(a)*menu.cfg[name].power;q.dashTime=.24;}),off:()=>stopLoop(name)},
+        AutoBridge:{on:()=>startLoop(name,45,()=>{const q=p();if(!alive(q))return;const v=Math.hypot(q.vx,q.vy);if(v<20)return;api.forcePlaceBlockAt(q.x+q.vx/v*TILE*menu.cfg[name].ahead,q.y+q.vy/v*TILE*menu.cfg[name].ahead,'red',menu.cfg[name].consume)}),off:()=>stopLoop(name)},
+        ClutchBot:{on:()=>startLoop(name,16,()=>{const q=p();if(alive(q)&&api.groundCoverage(q)<.35){const s=api.nearestWalkableWorld(q.x,q.y,menu.cfg[name].radius);if(s){api.forcePlaceBlockAt(q.x,q.y,'red',false);q.vx*=.3;q.vy*=.3}else api.teleportEntity(q,13*TILE+16,35*TILE+16)}}),off:()=>stopLoop(name)},
+        Phase:{on:()=>{const q=p();if(q){q._v6PhaseBase=q.speed;q.speed*=menu.cfg[name].speedMultiplier}},off:()=>{const q=p();if(q&&q._v6PhaseBase)q.speed=q._v6PhaseBase}},
+        GodMode:{on:()=>startLoop(name,16,()=>{const q=p();if(!q)return;q.alive=true;q.hp=Math.max(q.maxHp||24,menu.cfg[name].minimumHp);q.invuln=1;q.respawn=0;}),off:()=>stopLoop(name)},
+        Regen:{on:()=>startLoop(name,()=>menu.cfg[name].interval,()=>{const q=p();if(alive(q))q.hp=Math.min(q.maxHp,q.hp+menu.cfg[name].heal)}),off:()=>stopLoop(name)},
+        AutoGapple:{on:()=>startLoop(name,60,()=>{const q=p();if(alive(q)&&q.hp<=menu.cfg[name].threshold&&q.gapples>0)api.consumeGapple(q)}),off:()=>stopLoop(name)},
+        AutoPearl:{on:()=>startLoop(name,20,()=>{const q=p();if(!alive(q)||api.groundCoverage(q)>menu.cfg[name].threshold)return;const s=api.nearestWalkableWorld(q.x,q.y,8)||{x:13*TILE+16,y:35*TILE+16};api.teleportEntity(q,s.x,s.y);api.syncAntiCheat?.(1200)}),off:()=>stopLoop(name)},
+        InventoryKeeper:{on:()=>{},off:()=>{}},
+        InfiniteResources:{on:()=>startLoop(name,120,()=>{const q=p();if(!q)return;for(const k of ['iron','gold','diamond','emerald'])q.inv[k]=Math.max(q.inv[k],menu.cfg[name].amount);for(const k of ['blocks','arrows','fireballs','tnt','pearls','gapples'])q[k]=Math.max(q[k]||0,menu.cfg[name].amount);q.bow=true;}),off:()=>stopLoop(name)},
+        ShopAnywhere:{on:()=>{},off:()=>{}},
+        Nuker:{on:()=>startLoop(name,()=>menu.cfg[name].delay,()=>{const q=p();if(!q)return;const rr=Math.ceil(menu.cfg[name].range/TILE);for(let y=api.gy(q.y)-rr;y<=api.gy(q.y)+rr;y++)for(let x=api.gx(q.x)-rr;x<=api.gx(q.x)+rr;x++){const t=api.getTile(x,y);if(t===C.BLUE_BLOCK||(menu.cfg[name].stone&&t===C.STONE)){const c=api.centerOf(x,y);if(api.dist(q.x,q.y,c.x,c.y)<=menu.cfg[name].range)api.map[api.idx(x,y)]=C.VOID;}}}),off:()=>stopLoop(name)},
+        BedNuker:{on:()=>startLoop(name,()=>menu.cfg[name].delay,()=>{const b=api.blueBed,q=p();if(!b?.alive||!q)return;if(api.dist(q.x,q.y,b.x+b.w/2,b.y+b.h/2)<=menu.cfg[name].range){b.hp-=menu.cfg[name].damage;if(b.hp<=0)api.forceBreakBed('blue')}}),off:()=>stopLoop(name)},
+        GeneratorBoost:{on:()=>{for(const g of api.generators||[]){g._v6CheatRate=g.rate;g.rate=Math.max(.08,g.rate*menu.cfg[name].multiplier)}},off:()=>{for(const g of api.generators||[])if(g._v6CheatRate){g.rate=g._v6CheatRate;delete g._v6CheatRate}}},
+        ResourceVacuum:{on:()=>startLoop(name,16,()=>{const q=p();if(!q)return;for(const r of api.resources||[]){const dx=q.x-r.x,dy=q.y-r.y,d=Math.hypot(dx,dy)||1;if(d<menu.cfg[name].range){r.x+=dx/d*Math.min(menu.cfg[name].speed,d);r.y+=dy/d*Math.min(menu.cfg[name].speed,d)}}}),off:()=>stopLoop(name)},
+        FreezeBot:{on:()=>startLoop(name,16,()=>{const q=e();if(q){q.vx=0;q.vy=0;q.speed=0}}),off:()=>{if(e())e().speed=225;stopLoop(name)}},
+        BedReviver:{on:()=>startLoop(name,150,()=>{const b=api.redBed;if(b&&!b.alive){b.alive=true;b.hp=b.maxHp=Math.max(b.maxHp||22,menu.cfg[name].health);toast('BedReviver rebuilt your bed.')}}),off:()=>stopLoop(name)},
+        ESP:{on:()=>{},off:()=>{}},Tracers:{on:()=>{},off:()=>{}},Minimap:{on:()=>{},off:()=>{}},ResourceESP:{on:()=>{},off:()=>{}},BedESP:{on:()=>{},off:()=>{}},ProjectileESP:{on:()=>{},off:()=>{}},Breadcrumbs:{on:()=>{},off:()=>{}},
+        Fullbright:{on:()=>{document.documentElement.style.filter=`brightness(${menu.cfg[name].brightness}) saturate(1.1)`},off:()=>{document.documentElement.style.filter=''}},
+        AutoFarm:{on:()=>startLoop(name,()=>menu.cfg[name].delay,()=>{const q=p(),rs=api.resources||[];if(!alive(q)||!rs.length)return;let best=rs[0],bd=Infinity;for(const r of rs){const d=api.dist(q.x,q.y,r.x,r.y);if(d<bd){bd=d;best=r}}if(best)api.teleportEntity(q,best.x,best.y)}),off:()=>stopLoop(name)},
+        AutoRush:{on:()=>startLoop(name,16,()=>{const q=p(),b=api.blueBed;if(!alive(q)||!b?.alive)return;const tx=b.x+b.w/2,ty=b.y+b.h/2,a=Math.atan2(ty-q.y,tx-q.x);q.vx+=Math.cos(a)*22*menu.cfg[name].speed;q.vy+=Math.sin(a)*22*menu.cfg[name].speed;if(menu.cfg[name].scaffold)api.forcePlaceBlockAt(q.x+Math.cos(a)*TILE,q.y+Math.sin(a)*TILE,'red',false)}),off:()=>stopLoop(name)},
+        AutoDefend:{on:()=>startLoop(name,80,()=>{const q=p(),z=e(),b=api.redBed;if(!alive(q)||!alive(z)||!b?.alive)return;if(api.dist(z.x,z.y,b.x+b.w/2,b.y+b.h/2)<menu.cfg[name].triggerRange)api.teleportEntity(q,13*TILE+16,35*TILE+16)}),off:()=>stopLoop(name)},
+        AntiProjectile:{on:()=>startLoop(name,16,()=>{const q=p();if(!q)return;for(let i=(api.projectiles||[]).length-1;i>=0;i--){const z=api.projectiles[i];if(z.team==='blue'&&api.dist(q.x,q.y,z.x,z.y)<menu.cfg[name].radius)api.projectiles.splice(i,1)}}),off:()=>stopLoop(name)},
+        AutoPotion:{on:()=>startLoop(name,70,()=>{const q=p();if(q&&q.hp<=menu.cfg[name].threshold&&(state.items.invis||state.items.speedPot||state.items.jump))usePotion()}),off:()=>stopLoop(name)},
+        AutoQuest:{on:()=>startLoop(name,250,()=>updateQuests()),off:()=>stopLoop(name)},
+        ResourceDupe:{on:()=>startLoop(name,()=>menu.cfg[name].interval,()=>{const q=p();if(!q)return;for(const t of ['iron','gold','diamond','emerald'])api.spawnResource(t,q.x+(Math.random()-.5)*40,q.y+(Math.random()-.5)*40,menu.cfg[name].amount)}),off:()=>stopLoop(name)},
+        EnemyDisabler:{on:()=>startLoop(name,16,()=>{const q=e();if(q){q.vx*=menu.cfg[name].slow;q.vy*=menu.cfg[name].slow;q.attackCd=Math.max(q.attackCd,.8)}}),off:()=>stopLoop(name)},
+        ClickTeleport:{on:()=>{},off:()=>{}},
+        Tower:{on:()=>{popTower();setTimeout(()=>menu.setModule(name,false),0)},off:()=>{}},
+        PanicButton:{on:()=>{for(const n of ['GodMode','ClutchBot','AutoPearl','AntiProjectile','Velocity','Regen'])menu.setModule(n,true);for(const n of ['Fly','LongJump','AutoRush','ClickTeleport'])menu.setModule(n,false);setTimeout(()=>menu.setModule(name,false),0)},off:()=>{}}
+      };
+      menu.modules[name]=mods[name]||{on(){},off(){}};
+    }
+
+    function patchMenu(menu) {
+      if(menu.__v6Patched)return;menu.__v6Patched=true;
+      for(const [name,def] of Object.entries(extraDefaults))addModule(menu,name,def);
+      const body=document.getElementById('abv5Body')||document.getElementById('abv4Body');if(!body)return;
+      const head=document.querySelector('#abv5Head b');if(head)head.textContent='AetherCore Private v6.2 — streamlined';
+      for(const [cat,names] of Object.entries(extraCategories)){
+        const c=document.createElement('div');c.className='abCat';c.textContent=cat;body.appendChild(c);
+        for(const name of names){if(body.querySelector(`.abMod[data-name="${CSS.escape(name)}"]`))continue;const row=document.createElement('div');row.className='abMod';row.dataset.name=name;row.dataset.search=`${name} ${cat} ${extraDescriptions[name]}`.toLowerCase();row.innerHTML=`<span>${name}<span class="abKey">${(menu.keybinds[name]||'').replace('Key','')}</span></span><div class="abToggle"></div>`;row.onclick=()=>menu.toggleModule(name);row.oncontextmenu=e=>{e.preventDefault();openExtraSettings(menu,name,row)};row.onmouseenter=e=>showTip(e,extraDescriptions[name]);row.onmousemove=e=>showTip(e,extraDescriptions[name]);row.onmouseleave=()=>tip.style.display='none';body.appendChild(row);}
+      }
+      const oldSet=menu.setModule.bind(menu);menu.setModule=(name,en)=>{oldSet(name,en);document.querySelector(`.abMod[data-name="${CSS.escape(name)}"]`)?.classList.toggle('on',!!menu.toggles[name]);};
+      document.addEventListener('mousedown',e=>{if(!menu.toggles.ClickTeleport||e.button!==2||e.target?.id!=='game')return;e.preventDefault();e.stopImmediatePropagation();const p=api.player;if(p){api.teleportEntity(p,api.mouse.worldX,api.mouse.worldY);api.syncAntiCheat?.(1000);}},true);
+    }
+
+    function showTip(e,text){tip.textContent=text;tip.style.display='block';tip.style.left=Math.max(8,(e.clientX||0)-285)+'px';tip.style.top=((e.clientY||0)+14)+'px';}
+    function openExtraSettings(menu,name,row){const cfg=menu.cfg[name]||{};settingsBox.innerHTML=`<h3>${esc(name)} Settings</h3><div style="color:#aab3cf;font-size:11px">${esc(extraDescriptions[name]||'')}</div>${Object.entries(cfg).map(([k,v])=>typeof v==='boolean'?`<label><input type="checkbox" data-k="${k}" ${v?'checked':''}> ${esc(k)}</label>`:`<label>${esc(k.replace(/([A-Z])/g,' $1'))}</label><input data-k="${k}" type="${typeof v==='number'?'number':'text'}" step="${Number.isInteger(v)?'1':'0.05'}" value="${esc(v)}">`).join('')}<label>Keybind code</label><input id="abv6Bind" value="${esc(menu.keybinds[name]||'')}" placeholder="Example: KeyG or F7"><div class="row"><button id="abv6Apply">Apply</button><button id="abv6Close">Close</button></div>`;settingsBox.style.display='block';settingsBox.querySelector('#abv6Close').onclick=()=>settingsBox.style.display='none';settingsBox.querySelector('#abv6Apply').onclick=()=>{settingsBox.querySelectorAll('[data-k]').forEach(el=>{const old=cfg[el.dataset.k];cfg[el.dataset.k]=typeof old==='boolean'?el.checked:typeof old==='number'?Number(el.value):el.value;});menu.keybinds[name]=settingsBox.querySelector('#abv6Bind').value.trim();row.querySelector('.abKey').textContent=(menu.keybinds[name]||'').replace('Key','');const extraCfg={};for(const n of Object.keys(extraDefaults))extraCfg[n]=menu.cfg[n];try{localStorage.setItem(storageKey,JSON.stringify({relic:state.relic,extraCfg}));}catch{}settingsBox.style.display='none';toast(`${name} settings saved.`);};}
+
+    const menuWait=setInterval(()=>{const menu=window.AetherBedsMenuV5;if(!menu)return;clearInterval(menuWait);patchMenu(menu);},100);
+
+    const oldHelp=document.getElementById('help');if(oldHelp)oldHelp.innerHTML=oldHelp.innerHTML.replace('Protect your bed.','<b>V6:</b> U Advanced Arsenal · Y Bridge Egg · N Snowball · I Potion · O Tower/Sponge · L Minion · H Beacon · X Tracker.<br><br>Protect your bed.');
+    injectRelicField();buildArsenal();
+    window.AetherBedsV6={state,relics,shopItems,openArsenal,useBridgeEgg,useSnowball,usePotion,useBeacon,fortifyBed};
+    console.log('[AetherBeds] Colossal v6 expansion loaded.');
+  }
+})();
+</script>
+
+
+
+<!-- v6.2.0 clean interface layer -->
+<style id="abv601CleanUI">
+  #help{display:none;top:10px;right:10px;width:min(330px,calc(100vw - 20px));padding:10px 12px;font-size:11px;line-height:1.4;opacity:.96}
+  #hud{inset:10px auto auto 10px;min-width:0;width:268px;padding:7px 9px;border-radius:12px;background:rgba(8,10,21,.72);box-shadow:0 8px 26px rgba(0,0,0,.28)}
+  #hud h1{margin:0 0 4px;font-size:10px;letter-spacing:.1em;opacity:.78}
+  #stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 9px;font-size:11px;line-height:1.3}
+  .hotbar{bottom:10px;gap:5px;padding:5px;border-radius:12px;background:rgba(8,10,21,.72);box-shadow:0 8px 26px rgba(0,0,0,.28)}
+  .slot{width:55px;padding:5px 4px;border-radius:9px;font-size:9px;line-height:1.15}
+  .slot b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #toast{top:48px;gap:5px}
+  .toastItem{padding:6px 10px;font-size:11px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+  body:not(.uiExpanded) .uiDetail{display:none!important}
+  body.uiExpanded #help{display:block}
+  body.uiExpanded #abv6Status{display:block}
+  #abv6EventBar{top:10px;min-width:0;width:auto;max-width:min(510px,calc(100vw - 610px));padding:6px 10px;border-radius:11px;font-size:10.5px;background:rgba(8,10,21,.74);box-shadow:0 8px 26px rgba(0,0,0,.28)}
+  #abv6Status{display:none;left:10px;bottom:76px;width:270px;padding:8px 10px;border-radius:12px;font-size:10px;line-height:1.35;background:rgba(8,10,21,.78)}
+  #abv5{display:none;top:58px!important;right:10px!important;width:306px!important;max-height:72vh!important;border-radius:16px!important;box-shadow:0 16px 58px rgba(0,0,0,.48)!important}
+  #abv5Head{padding:9px 10px!important}
+  #abv5Head b{font-size:10px!important;letter-spacing:.05em!important}
+  #abv5Head button{padding:5px 8px!important;font-size:10px!important}
+  #abv5Search{width:calc(100% - 16px)!important;margin:8px!important;padding:7px 8px!important;font-size:11px!important}
+  #abv5Body{padding:0 8px 8px!important;max-height:calc(72vh - 82px)!important}
+  .abCat{margin:7px 1px 4px!important;padding:6px 7px;border-radius:8px;background:rgba(255,255,255,.045);font-size:9px!important;cursor:pointer;user-select:none}
+  .abCat:after{content:'›';float:right;font-size:14px;line-height:8px;transform:rotate(90deg);transition:.12s}
+  .abCat.collapsed:after{transform:rotate(0deg)}
+  .abMod{margin:4px 0!important;padding:7px 8px!important;border-radius:10px!important}
+  .abMod span{font-size:11px!important}
+  .abToggle{width:34px!important;height:18px!important;padding:2px!important}
+  .abToggle:after{width:12px!important;height:12px!important}
+  .abMod.on .abToggle:after{transform:translateX(16px)!important}
+  #abv5Settings,#abv6Settings{top:58px!important;right:326px!important;width:310px!important;max-height:72vh!important;padding:11px!important;border-radius:14px!important}
+  #abv6ArsenalCard{width:min(820px,calc(100vw - 24px));max-height:calc(100vh - 24px);padding:15px;border-radius:18px}
+  #abv6ArsenalHead{top:-15px;padding:12px 0 9px}
+  #abv6ArsenalHead h2{font-size:22px}
+  .abv6ShopGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .abv6Buy{padding:8px;border-radius:11px}.abv6Buy b{font-size:11px}.abv6Buy span{font-size:10px}.abv6Buy small{font-size:10px}
+  @media(max-width:760px){
+    #hud{width:238px}#abv6EventBar{display:none}.hotbar{max-width:calc(100vw - 12px);overflow:hidden}.slot{width:49px}
+    #abv5{width:min(300px,calc(100vw - 20px))!important}
+    #abv5Settings,#abv6Settings{right:10px!important;width:min(310px,calc(100vw - 20px))!important}
+  }
+</style>
+<script>
+(() => {
+  'use strict';
+  document.body.classList.remove('uiExpanded');
+
+  const installMenuCleanup = () => {
+    const menu = document.getElementById('abv5') || document.getElementById('abv4');
+    const body = document.getElementById('abv5Body') || document.getElementById('abv4Body');
+    if (!menu || !body || body.dataset.cleanUiReady === '1') return false;
+    body.dataset.cleanUiReady = '1';
+    menu.style.display = 'none';
+
+    const applyCategoryState = cat => {
+      let node = cat.nextElementSibling;
+      while (node && !node.classList.contains('abCat')) {
+        if (node.classList.contains('abMod')) node.style.display = cat.classList.contains('collapsed') ? 'none' : 'flex';
+        node = node.nextElementSibling;
+      }
+    };
+
+    const setupCategory = cat => {
+      if (cat.dataset.cleanUiCat === '1') return;
+      cat.dataset.cleanUiCat = '1';
+      cat.classList.add('collapsed');
+      cat.title = 'Click to expand or collapse';
+      cat.addEventListener('click', () => {
+        cat.classList.toggle('collapsed');
+        applyCategoryState(cat);
+      });
+      applyCategoryState(cat);
+    };
+
+    const refreshCategories = () => {
+      body.querySelectorAll('.abCat').forEach(setupCategory);
+      body.querySelectorAll('.abCat.collapsed').forEach(applyCategoryState);
+    };
+    refreshCategories();
+    new MutationObserver(refreshCategories).observe(body, { childList:true });
+
+    const search = menu.querySelector('input[type="text"], #abv5Search, #abv4Search');
+    if (search) search.addEventListener('input', () => {
+      const active = search.value.trim().length > 0;
+      body.querySelectorAll('.abCat').forEach(cat => {
+        if (active) cat.classList.remove('collapsed');
+        else cat.classList.add('collapsed');
+      });
+      if (!active) setTimeout(refreshCategories, 0);
+    }, true);
+    return true;
+  };
+
+  const timer = setInterval(() => { if (installMenuCleanup()) clearInterval(timer); }, 80);
+
+  window.addEventListener('keydown', event => {
+    if (event.code !== 'F1' || event.repeat) return;
+    event.preventDefault();
+    document.body.classList.toggle('uiExpanded');
+    const expanded = document.body.classList.contains('uiExpanded');
+    const toast = window.AetherBedsModAPI?.toast;
+    if (toast) toast(expanded ? 'Detailed HUD shown.' : 'Compact HUD enabled.');
+  }, true);
+})();
+</script>
+
+
+<!-- v6.2.0 streamlined modules, tabbed GUI and anti-cheat status -->
+<style id="abv620StreamlinedStyle">
+  body:not(.uiExpanded) #abv6EventBar{opacity:0;transform:translate(-50%,-8px);pointer-events:none}
+  #abv6EventBar{transition:opacity .18s ease,transform .18s ease}
+  #abv6EventBar.eventVisible,body.uiExpanded #abv6EventBar{opacity:1;transform:translate(-50%,0)}
+  body:not(.uiExpanded) .hotbar .slot:nth-child(n+6){display:none!important}
+  #hud{width:244px!important}
+  #stats{gap:1px 7px!important;font-size:10.5px!important}
+  #abv620ACBadge{float:right;margin-left:8px;padding:1px 6px;border-radius:999px;background:rgba(114,255,157,.1);border:1px solid rgba(114,255,157,.22);color:#72ff9d;font-size:8px;letter-spacing:.04em}
+  #abv620ACBadge.bypass{color:#ffd166;border-color:rgba(255,209,102,.28);background:rgba(255,209,102,.1)}
+
+  #abv5{width:318px!important;max-height:70vh!important}
+  #abv5Head{padding:8px 9px!important}
+  #abv5Head b{max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #abv5Search{margin:7px 8px 5px!important;width:calc(100% - 16px)!important}
+  #abv620MenuMeta{display:flex;justify-content:space-between;align-items:center;padding:0 9px 5px;color:#aab3cf;font-size:9px}
+  #abv620Tabs{display:flex;gap:5px;padding:0 8px 7px;overflow-x:auto;scrollbar-width:none}
+  #abv620Tabs::-webkit-scrollbar{display:none}
+  .abv620Tab{flex:0 0 auto;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.045);color:#aab3cf;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:850;cursor:pointer}
+  .abv620Tab.active{color:#061018;background:linear-gradient(135deg,#8be9ff,#b8fff2);border-color:transparent}
+  #abv5Body{max-height:calc(70vh - 132px)!important;padding:0 8px 8px!important}
+  #abv5Body .abCat{display:none!important}
+  #abv5Body .abMod{margin:3px 0!important;padding:6px 8px!important;min-height:33px}
+  #abv5Body .abMod span{font-size:10.5px!important}
+  #abv5Body .abKey{font-size:8.5px!important}
+  #abv5Body .abToggle{width:31px!important;height:17px!important}
+  #abv5Body .abToggle:after{width:11px!important;height:11px!important}
+  #abv5Body .abMod.on .abToggle:after{transform:translateX(14px)!important}
+  #abv620Empty{display:none;padding:18px 8px;text-align:center;color:#aab3cf;font-size:11px}
+
+  #abv5Settings,#abv4Settings,#abv6Settings{
+    top:58px!important;right:10px!important;width:318px!important;max-height:70vh!important;
+    z-index:1000003!important;border-radius:16px!important;box-shadow:0 18px 70px rgba(0,0,0,.62)!important
+  }
+  #abv5Settings:before,#abv4Settings:before,#abv6Settings:before{content:'Settings';display:block;margin-bottom:7px;color:#8be9ff;font-size:9px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}
+  #abv620SettingsClose{position:absolute;top:9px;right:9px;width:auto!important;padding:4px 7px!important}
+
+  #shop .card{width:min(820px,calc(100vw - 24px));padding:16px!important}
+  #shop .shopGrid{max-height:31vh!important}
+  #shop .buy{padding:9px!important}
+  #shop h2{font-size:25px!important}
+  .shopSectionTitle{margin:12px 0 6px!important}
+
+
+  #abBattleBtn{display:none!important}
+  #abQuickToggle{display:none!important}
+  #abHotfixOpenBtn{width:40px!important;height:34px!important;padding:0!important;opacity:.58!important;font-size:0!important;border-radius:12px!important}
+  #abHotfixOpenBtn:after{content:'☰';font-size:16px;color:#edf2ff}
+  #abHotfixOpenBtn:hover{opacity:1!important}
+  #abv620BattleAccess{background:rgba(255,255,255,.07);color:#ffd166;border:1px solid rgba(255,209,102,.22);border-radius:9px;padding:5px 7px;font-size:9px;font-weight:900;cursor:pointer}
+
+  @media(max-width:700px){
+    #hud{width:220px!important}
+    #abv5{right:8px!important;width:min(306px,calc(100vw - 16px))!important}
+    #abv5Settings,#abv4Settings,#abv6Settings{right:8px!important;width:min(306px,calc(100vw - 16px))!important}
+  }
+</style>
+<script id="abv620StreamlinedPatch">
+(() => {
+  'use strict';
+  const REMOVED = [
+    'KillAura','Criticals','OneTap',
+    'ProjectileAura','ProjectileExploit','ProjectileAimbot','ArrowBypass','InfiniteProjectiles',
+    'Speed','Phase','DashExtender','InfiniteDash',
+    'InstantRespawn','AlwaysRespawn',
+    'GodMode','Regen','AntiDeath','AntiProjectile',
+    'InstantBreak','Breaker','BedAura','BedNuker',
+    'RewardExploit','ResourceDupe','InfiniteResources','ResourceVacuum',
+    'FreezeBot','EnemyDisabler'
+  ];
+  const ACTIVE_STORE = 'AetherBedsPrivateMenuV5_ActiveModules';
+  const CFG_STORE = 'AetherBedsPrivateMenuV5';
+  const loops = new Map();
+  const originals = Object.create(null);
+  let activeCategory = 'All';
+  let eventTimer = 0;
+
+  const wait = setInterval(() => {
+    const menu = window.AetherBedsMenuV5;
+    const api = window.AetherBedsModAPI;
+    const body = document.getElementById('abv5Body');
+    if (!menu || !api || !body || !document.querySelector('.abMod[data-name="PanicButton"]')) return;
+    clearInterval(wait);
+    install(menu, api, body);
+  }, 100);
+
+  const startLoop = (name, delay, fn) => {
+    stopLoop(name);
+    const run = () => {
+      try { fn(); } catch (error) { console.warn('[AetherBeds v6.2]', name, error); }
+      loops.set(name, setTimeout(run, Math.max(10, typeof delay === 'function' ? Number(delay()) : Number(delay) || 16)));
+    };
+    run();
+  };
+  const stopLoop = name => { const id = loops.get(name); if (id) clearTimeout(id); loops.delete(name); };
+  const alive = entity => entity && entity.alive !== false && entity.hp > 0;
+  const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function install(menu, api, body) {
+    // Retire old overlapping modules safely and clean stale persisted toggles.
+    for (const name of REMOVED) {
+      try { if (menu.toggles[name]) menu.setModule(name, false); } catch {}
+      delete menu.modules[name];
+      if (name !== 'KillAura') delete menu.cfg[name];
+      delete menu.keybinds[name];
+      delete menu.toggles[name];
+      body.querySelector(`.abMod[data-name="${CSS.escape(name)}"]`)?.remove();
+    }
+    try {
+      const active = JSON.parse(localStorage.getItem(ACTIVE_STORE) || '[]').filter(name => !REMOVED.includes(name));
+      localStorage.setItem(ACTIVE_STORE, JSON.stringify(active));
+    } catch {}
+
+    const defaults = {
+      CombatAura:{range:120,delay:95,bonusDamage:2.5,lethal:false,knockback:145},
+      ProjectileAssist:{range:900,aimStrength:.75,autoFire:false,fireDelay:220,noCooldown:true,infiniteAmmo:true,phaseBlocks:true,useFireballs:false},
+      MovementBoost:{speedMultiplier:1.55,dashMultiplier:1.9,infiniteDash:true},
+      RespawnControl:{delay:100,allowAfterBed:true,invulnerability:1.3},
+      Survival:{minimumHp:8,healPerTick:1,interval:120,invulnerability:.45,removeProjectiles:true,voidSave:true},
+      BedBreaker:{range:160,damage:4,delay:130,instant:false,remote:false},
+      ResourceControl:{amount:128,interval:450,includeUtilities:true,spawnDrops:false},
+      BotControl:{slow:.08,freeze:false}
+    };
+    const descriptions = {
+      CombatAura:'Unified melee aura with critical bonus and optional lethal hits.',
+      ProjectileAssist:'Unified projectile aimbot, autofire, cooldown, ammo and arrow-phasing controls.',
+      MovementBoost:'Unified speed, dash length and infinite-dash module.',
+      RespawnControl:'Unified instant and post-bed respawning.',
+      Survival:'Unified healing, anti-death, anti-projectile and void rescue.',
+      BedBreaker:'Unified legit, instant, aura and remote bed breaking.',
+      ResourceControl:'Unified resource spawning/refilling and utility restocking.',
+      BotControl:'Unified bot slow and freeze controls.'
+    };
+
+    const saveCfg = () => {
+      try { localStorage.setItem(CFG_STORE, JSON.stringify({ cfg:menu.cfg, keybinds:menu.keybinds })); } catch {}
+    };
+    const persisted = (() => { try { return JSON.parse(localStorage.getItem(CFG_STORE) || '{}'); } catch { return {}; } })();
+
+    for (const [name, def] of Object.entries(defaults)) {
+      menu.cfg[name] = Object.assign({}, def, persisted.cfg?.[name] || {});
+      if (!(name in menu.keybinds)) menu.keybinds[name] = '';
+    }
+
+    menu.modules.CombatAura = {
+      on(){ startLoop('CombatAura', () => menu.cfg.CombatAura.delay, () => {
+        const p=api.player,e=api.enemy,c=menu.cfg.CombatAura;
+        if(!alive(p)||!alive(e)||api.dist(p.x,p.y,e.x,e.y)>c.range)return;
+        const damage=c.lethal?999:(5.8+(p.sword||0)*1.9+(p.sharpness||0)*1.1+c.bonusDamage);
+        api.damageEntity(e,damage,'red');
+        const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy)||1;e.vx+=dx/d*c.knockback;e.vy+=dy/d*c.knockback;
+      });},
+      off(){stopLoop('CombatAura');}
+    };
+    menu.modules.ProjectileAssist = {
+      on(){
+        api.setFlag?.('arrowBypass',!!menu.cfg.ProjectileAssist.phaseBlocks);
+        let lastShot=0;
+        startLoop('ProjectileAssist',16,()=>{
+          const p=api.player,e=api.enemy,c=menu.cfg.ProjectileAssist;if(!alive(p))return;
+          if(c.noCooldown)p.bowCd=0;
+          if(c.infiniteAmmo){p.bow=true;p.arrows=Math.max(p.arrows||0,64);p.fireballs=Math.max(p.fireballs||0,c.useFireballs?4:0);}
+          if(alive(e))for(const pr of api.projectiles||[]){if(pr.team!=='red'||api.dist(pr.x,pr.y,e.x,e.y)>c.range)continue;const s=Math.hypot(pr.vx,pr.vy)||650,dx=e.x-pr.x,dy=e.y-pr.y,d=Math.hypot(dx,dy)||1;pr.vx+=(dx/d*s-pr.vx)*c.aimStrength;pr.vy+=(dy/d*s-pr.vy)*c.aimStrength;}
+          if(c.autoFire&&alive(e)&&api.dist(p.x,p.y,e.x,e.y)<=c.range&&performance.now()-lastShot>=c.fireDelay){lastShot=performance.now();if(c.useFireballs&&p.fireballs>0)api.throwUtility(p,e.x,e.y,'fireball');else api.shootArrow(p,e.x,e.y,true);}
+        });
+      },
+      off(){api.setFlag?.('arrowBypass',false);stopLoop('ProjectileAssist');}
+    };
+    menu.modules.MovementBoost = {
+      on(){
+        const p=api.player;if(p){originals.moveSpeed=p.speed;originals.dashBonus=p.dashBonus||0;}
+        startLoop('MovementBoost',16,()=>{const q=api.player,c=menu.cfg.MovementBoost;if(!alive(q))return;const base=originals.moveSpeed||225;q.speed=Math.max(q.speed,base*c.speedMultiplier);q.dashBonus=Math.max(q.dashBonus||0,(originals.dashBonus||0)+c.dashMultiplier);if(c.infiniteDash)q.dashCd=0;});
+      },
+      off(){const p=api.player;if(p){if(originals.moveSpeed!=null)p.speed=originals.moveSpeed;if(originals.dashBonus!=null)p.dashBonus=originals.dashBonus;}stopLoop('MovementBoost');}
+    };
+    menu.modules.RespawnControl = {
+      on(){let deadAt=0;startLoop('RespawnControl',30,()=>{const p=api.player,c=menu.cfg.RespawnControl;if(!p)return;if(alive(p)){deadAt=0;return;}if(!deadAt)deadAt=performance.now();if(performance.now()-deadAt<c.delay)return;if(api.redBed?.alive||c.allowAfterBed){api.safeRespawn(p);p.invuln=Math.max(p.invuln||0,c.invulnerability);deadAt=0;}});},
+      off(){stopLoop('RespawnControl');}
+    };
+    menu.modules.Survival = {
+      on(){startLoop('Survival',()=>menu.cfg.Survival.interval,()=>{const p=api.player,c=menu.cfg.Survival;if(!p)return;if(!alive(p)){api.safeRespawn(p);return;}p.hp=Math.min(p.maxHp,Math.max(p.hp,c.minimumHp)+c.healPerTick);p.invuln=Math.max(p.invuln||0,c.invulnerability);if(c.removeProjectiles)for(let i=(api.projectiles||[]).length-1;i>=0;i--){const pr=api.projectiles[i];if(pr.team==='blue'&&api.dist(pr.x,pr.y,p.x,p.y)<150)api.projectiles.splice(i,1);}if(c.voidSave&&api.groundCoverage(p)<=.001){const safe=api.nearestWalkableWorld(p.x,p.y,8)||{x:13*api.constants.TILE+16,y:35*api.constants.TILE+16};api.teleportEntity(p,safe.x,safe.y);p.voidTime=0;}});},
+      off(){stopLoop('Survival');}
+    };
+    menu.modules.BedBreaker = {
+      on(){startLoop('BedBreaker',()=>menu.cfg.BedBreaker.delay,()=>{const p=api.player,b=api.blueBed,c=menu.cfg.BedBreaker;if(!alive(p)||!b?.alive)return;const d=api.dist(p.x,p.y,b.x+b.w/2,b.y+b.h/2);if(!c.remote&&d>c.range)return;if(c.instant){api.forceBreakBed('blue');return;}b.hp-=Math.max(.1,c.damage);if(b.hp<=0)api.forceBreakBed('blue');});},
+      off(){stopLoop('BedBreaker');}
+    };
+    menu.modules.ResourceControl = {
+      on(){startLoop('ResourceControl',()=>menu.cfg.ResourceControl.interval,()=>{const p=api.player,c=menu.cfg.ResourceControl;if(!p)return;if(c.spawnDrops){for(const type of ['iron','gold','diamond','emerald'])api.spawnResource(type,p.x+(Math.random()-.5)*30,p.y+(Math.random()-.5)*30,Math.min(32,c.amount));}else{for(const type of ['iron','gold','diamond','emerald'])p.inv[type]=Math.max(p.inv[type]||0,c.amount);p.blocks=Math.max(p.blocks||0,c.amount);if(c.includeUtilities){p.bow=true;p.arrows=Math.max(p.arrows||0,c.amount);p.fireballs=Math.max(p.fireballs||0,16);p.tnt=Math.max(p.tnt||0,16);p.pearls=Math.max(p.pearls||0,8);p.gapples=Math.max(p.gapples||0,8);}}});},
+      off(){stopLoop('ResourceControl');}
+    };
+    menu.modules.BotControl = {
+      on(){const e=api.enemy;if(e)originals.enemySpeed=e.speed;startLoop('BotControl',16,()=>{const e=api.enemy,c=menu.cfg.BotControl;if(!e)return;if(c.freeze){e.vx=0;e.vy=0;e.speed=0;}else{e.vx*=c.slow;e.vy*=c.slow;e.speed=Math.max(20,(originals.enemySpeed||225)*Math.max(.02,c.slow));}e.attackCd=Math.max(e.attackCd||0,.7);});},
+      off(){const e=api.enemy;if(e&&originals.enemySpeed!=null)e.speed=originals.enemySpeed;stopLoop('BotControl');}
+    };
+
+    const categories = {
+      Combat:['CombatAura','ComboAssist','Reach','NoHitDelay','AimAssist','TargetStrafe','Velocity'],
+      Ranged:['ProjectileAssist'],
+      Movement:['MovementBoost','SafeWalk','Scaffold','AntiVoid','NoBoundaries','Fly','LongJump','AutoBridge','ClutchBot','AutoPearl','ClickTeleport'],
+      Player:['RespawnControl','Survival','AutoGapple','InventoryKeeper','ShopAnywhere','PanicButton','AntiCheatBypass'],
+      World:['BedBreaker','Nuker','RemoveBreakLimits','RemovePlacementLimits','GeneratorBoost','Magnet','BedReviver','Tower'],
+      Automation:['AutoBuy','AutoFarm','AutoRush','AutoDefend','AutoPotion','AutoQuest'],
+      Utility:['ResourceControl','BotControl'],
+      Visual:['ESP','Tracers','Minimap','ResourceESP','BedESP','ProjectileESP','Breadcrumbs','Fullbright'],
+      Win:['AutoWin']
+    };
+
+    const existingRows = new Map([...body.querySelectorAll('.abMod[data-name]')].map(row => [row.dataset.name,row]));
+    for (const name of Object.keys(defaults)) {
+      if (existingRows.has(name)) continue;
+      const row=document.createElement('div');row.className='abMod';row.dataset.name=name;row.dataset.search=`${name} ${descriptions[name]}`.toLowerCase();row.innerHTML=`<span>${name}<span class="abKey"></span></span><div class="abToggle"></div>`;
+      row.addEventListener('contextmenu',event=>{event.preventDefault();openSettings(name,descriptions[name],menu,saveCfg);});
+      body.appendChild(row);existingRows.set(name,row);
+    }
+
+    for (const cat of body.querySelectorAll('.abCat')) cat.remove();
+    const ordered=[];
+    for (const [category,names] of Object.entries(categories)) for (const name of names) {
+      const row=body.querySelector(`.abMod[data-name="${CSS.escape(name)}"]`);if(!row||!menu.modules[name])continue;row.dataset.category=category;row.dataset.search=`${row.dataset.search||name} ${category}`.toLowerCase();ordered.push(row);
+    }
+    for (const row of body.querySelectorAll('.abMod[data-name]')) if (!ordered.includes(row) && menu.modules[row.dataset.name]) { row.dataset.category='Other'; ordered.push(row); }
+    body.replaceChildren(...ordered);
+    const empty=document.createElement('div');empty.id='abv620Empty';empty.textContent='No modules match this view.';body.appendChild(empty);
+
+    const search=document.getElementById('abv5Search');
+    search.placeholder=`Search ${ordered.length} streamlined modules...`;
+    const meta=document.createElement('div');meta.id='abv620MenuMeta';meta.innerHTML='<span id="abv620Count"></span><span>Right-click for settings</span>';
+    search.after(meta);
+    const tabs=document.createElement('div');tabs.id='abv620Tabs';
+    const tabNames=['All','Active',...Object.keys(categories),...(ordered.some(row=>row.dataset.category==='Other')?['Other']:[])];
+    tabs.innerHTML=tabNames.map(name=>`<button class="abv620Tab ${name==='All'?'active':''}" data-tab="${esc(name)}">${esc(name)}</button>`).join('');
+    meta.after(tabs);
+
+    const applyFilter=()=>{
+      const query=(search.value||'').trim().toLowerCase();let shown=0;
+      for(const row of ordered){const name=row.dataset.name;const matchesQuery=!query||(row.dataset.search||'').includes(query);const matchesTab=query||activeCategory==='All'||(activeCategory==='Active'&&!!menu.toggles[name])||row.dataset.category===activeCategory;const visible=matchesQuery&&matchesTab;row.style.display=visible?'flex':'none';if(visible)shown++;}
+      empty.style.display=shown?'none':'block';
+      const active=Object.values(menu.toggles).filter(Boolean).length;document.getElementById('abv620Count').textContent=`${shown} shown · ${active} active`;
+    };
+    tabs.addEventListener('click',event=>{const button=event.target.closest('[data-tab]');if(!button)return;activeCategory=button.dataset.tab;tabs.querySelectorAll('.abv620Tab').forEach(tab=>tab.classList.toggle('active',tab===button));applyFilter();});
+    search.addEventListener('input',applyFilter,true);
+
+    const rawSet=menu.setModule.bind(menu);
+    menu.setModule=(name,enabled)=>{rawSet(name,enabled);applyFilter();updateBadge(api,menu);};
+    const rawToggle=menu.toggleModule.bind(menu);
+    menu.toggleModule=name=>{rawToggle(name);applyFilter();updateBadge(api,menu);};
+
+    const title=document.querySelector('#abv5Head b');if(title)title.textContent='AetherCore v6.3 — Team Modes';
+    const head=document.getElementById('abv5Head');
+    if(head&&!document.getElementById('abv620BattleAccess')){const bp=document.createElement('button');bp.id='abv620BattleAccess';bp.textContent='BP';bp.title='Open Battle Pass';bp.onclick=event=>{event.stopPropagation();document.getElementById('abBattleBtn')?.click();};head.insertBefore(bp,head.querySelector('#abv5Hide'));}
+    const quick=document.getElementById('abHotfixOpenBtn');if(quick){quick.textContent='';quick.title='Mods — Right Shift';}
+    const duplicateQuick=document.getElementById('abQuickToggle');if(duplicateQuick)duplicateQuick.style.display='none';
+    installBadge(api,menu);
+    lockAntiCheatToggle();
+    installEventAutoHide();
+    applyFilter();
+    saveCfg();
+    console.log(`[AetherBeds] v6.2 streamlined GUI loaded with ${ordered.length} modules.`);
+  }
+
+  function openSettings(name,description,menu,saveCfg){
+    const box=document.getElementById('abv6Settings');const cfg=menu.cfg[name]||{};
+    box.innerHTML=`<button id="abv620SettingsClose">Close</button><h3>${esc(name)}</h3><div style="color:#aab3cf;font-size:10.5px;margin-bottom:8px">${esc(description||'')}</div>${Object.entries(cfg).map(([key,value])=>typeof value==='boolean'?`<label><input type="checkbox" data-k="${esc(key)}" ${value?'checked':''}> ${esc(key.replace(/([A-Z])/g,' $1'))}</label>`:`<label>${esc(key.replace(/([A-Z])/g,' $1'))}</label><input data-k="${esc(key)}" type="${typeof value==='number'?'number':'text'}" step="${typeof value==='number'&&!Number.isInteger(value)?'0.05':'1'}" value="${esc(value)}">`).join('')}<label>Keybind code</label><input id="abv620Bind" value="${esc(menu.keybinds[name]||'')}" placeholder="Example: KeyG or F7"><button id="abv620Apply">Apply</button>`;
+    box.style.display='block';
+    box.querySelector('#abv620SettingsClose').onclick=()=>box.style.display='none';
+    box.querySelector('#abv620Apply').onclick=()=>{box.querySelectorAll('[data-k]').forEach(input=>{const old=cfg[input.dataset.k];cfg[input.dataset.k]=typeof old==='boolean'?input.checked:typeof old==='number'?Number(input.value):input.value;});menu.keybinds[name]=box.querySelector('#abv620Bind').value.trim();document.querySelector(`.abMod[data-name="${CSS.escape(name)}"] .abKey`).textContent=(menu.keybinds[name]||'').replace('Key','');saveCfg();box.style.display='none';menu.api.toast?.(`${name} settings saved.`);};
+  }
+
+  function installBadge(api,menu){
+    const heading=document.querySelector('#hud h1');if(!heading)return;let badge=document.getElementById('abv620ACBadge');if(!badge){badge=document.createElement('span');badge.id='abv620ACBadge';heading.appendChild(badge);}updateBadge(api,menu);setInterval(()=>updateBadge(api,menu),300);
+  }
+  function updateBadge(api,menu){const badge=document.getElementById('abv620ACBadge');if(!badge)return;const bypass=!!menu.toggles?.AntiCheatBypass;const status=api.getAntiCheatStatus?.();badge.classList.toggle('bypass',bypass);badge.textContent=bypass?`AC BYPASS ${Object.keys(status?.scopes||{}).length}`:`AC ${Math.ceil(status?.score||0)}/8`;badge.title=bypass?'AntiCheat remains active; only selected scopes are temporarily authorised.':'Integrity-locked anti-cheat is active.';}
+  function lockAntiCheatToggle(){const apply=()=>{const button=document.getElementById('abToggleAc');if(!button)return;if(!button.classList.contains('on'))button.classList.add('on');if(button.classList.contains('off'))button.classList.remove('off');if(!button.disabled)button.disabled=true;const span=button.querySelector('span');if(span&&span.textContent!=='AntiCheat: LOCKED ON')span.textContent='AntiCheat: LOCKED ON';};apply();let scheduled=false;new MutationObserver(()=>{if(scheduled)return;scheduled=true;setTimeout(()=>{scheduled=false;apply();},50);}).observe(document.body,{childList:true,subtree:true});}
+  function installEventAutoHide(){const bar=document.getElementById('abv6EventBar');if(!bar)return;const show=()=>{bar.classList.add('eventVisible');clearTimeout(eventTimer);eventTimer=setTimeout(()=>bar.classList.remove('eventVisible'),4200);};let previous=bar.textContent;new MutationObserver(()=>{if(bar.textContent!==previous){previous=bar.textContent;show();}}).observe(bar,{childList:true,subtree:true,characterData:true});show();}
+})();
+</script>
+
+<!-- v6.3.0 team modes and ranked layer -->
+<style id="abv630ModesStyle">
+  #abv630ModeChip{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:47;display:none;align-items:center;gap:7px;padding:5px 9px;border:1px solid rgba(255,255,255,.11);border-radius:999px;background:rgba(8,10,21,.78);backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(0,0,0,.25);font:850 9.5px Inter,system-ui;color:#edf2ff;pointer-events:none;white-space:nowrap}
+  #abv630ModeChip b{color:#8be9ff}#abv630ModeChip .rank{color:#ffd166}
+  #abv630Scoreboard{position:fixed;left:50%;top:45px;transform:translateX(-50%);z-index:2147483000;display:none;width:min(460px,calc(100vw - 24px));padding:11px;border:1px solid rgba(255,255,255,.13);border-radius:15px;background:rgba(8,10,21,.94);backdrop-filter:blur(14px);box-shadow:0 18px 55px rgba(0,0,0,.5);font:750 11px/1.4 Inter,system-ui;color:#aab3cf;pointer-events:none}
+  #abv630Scoreboard.open{display:block}.abv630ScoreHead{display:flex;justify-content:space-between;margin-bottom:7px;color:#edf2ff;font-weight:950}.abv630TeamRow{display:grid;grid-template-columns:12px 1fr auto auto;gap:7px;align-items:center;padding:5px 6px;border-radius:9px}.abv630TeamRow:nth-child(even){background:rgba(255,255,255,.035)}.abv630Dot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 10px currentColor}.abv630BedAlive{color:#72ff9d}.abv630BedDead{color:#ff5f78}.abv630Elim{opacity:.45;text-decoration:line-through}
+  #abv630RankLock{display:none;margin:0 8px 7px;padding:7px 8px;border:1px solid rgba(255,209,102,.24);border-radius:10px;background:rgba(255,209,102,.08);color:#ffd166;font:850 9px/1.35 Inter,system-ui;text-align:center}
+  body.abv630Ranked #abv630RankLock{display:block}body.abv630Ranked #abv5Body .abMod{opacity:.38;filter:grayscale(.65);pointer-events:none}
+  #abv630ModeCanvas{position:fixed;inset:0;width:100vw;height:100vh;z-index:37;pointer-events:none}
+  @media(max-width:720px){#abv630ModeChip{top:7px;font-size:8.5px}#abv630Scoreboard{top:39px}}
+</style>
+<canvas id="abv630ModeCanvas"></canvas>
+<div id="abv630ModeChip"></div>
+<div id="abv630Scoreboard"></div>
+<script id="abv630ModesPatch">
+(() => {
+  'use strict';
+  const PRESETS = {
+    '1v1': { id:'1v1', name:'1v1', ranked:false, teams:[['red',1],['blue',1]], desc:'Classic solo duel.' },
+    '2v2': { id:'2v2', name:'2v2', ranked:false, teams:[['red',2],['blue',2]], desc:'One AI teammate on each side.' },
+    '3v3': { id:'3v3', name:'3v3', ranked:false, teams:[['red',3],['blue',3]], desc:'Three-player squads with shared beds.' },
+    'ranked': { id:'ranked', name:'Ranked 1v1', ranked:true, teams:[['red',1],['blue',1]], desc:'Rating-enabled competitive duel. Gameplay cheats are locked.' },
+    '2v2x5': { id:'2v2x5', name:'2v2v2v2v2', ranked:false, teams:[['red',2],['blue',2],['green',2],['yellow',2],['purple',2]], desc:'Five two-player teams fight until one remains.' },
+    '4v4x4': { id:'4v4x4', name:'4v4v4v4', ranked:false, teams:[['red',4],['blue',4],['green',4],['yellow',4]], desc:'Four full squads and four beds.' },
+    '10v10': { id:'10v10', name:'10v10', ranked:false, teams:[['red',10],['blue',10]], desc:'Large battle with nineteen bots.' }
+  };
+  const TEAM_META = {
+    red:{name:'Red',color:'#ff5f78',soft:'#ffb6c4',base:[13,35]},
+    blue:{name:'Blue',color:'#61a8ff',soft:'#b8d0ff',base:[62,12]},
+    green:{name:'Green',color:'#66f2a2',soft:'#c6ffe0',base:[13,12]},
+    yellow:{name:'Yellow',color:'#ffd166',soft:'#fff0b2',base:[62,35]},
+    purple:{name:'Purple',color:'#bd8cff',soft:'#e3d0ff',base:[38,7]}
+  };
+  const canvas=document.getElementById('abv630ModeCanvas');
+  const ctx=canvas.getContext('2d');
+  const chip=document.getElementById('abv630ModeChip');
+  const board=document.getElementById('abv630Scoreboard');
+  let api=null, active=null, agents=[], extraBeds=[], lastCoreState='', lastTick=performance.now();
+  let selected=localStorage.getItem('aetherbeds.teamMode')||'1v1';
+  let finishing=false, resultRecorded=false, scoreboardHeld=false, matchSerial=0, lastSwing=0;
+
+  function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+  function distance(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+  function alive(e){return !!e&&e.alive!==false&&(e.hp??1)>0;}
+  function resize(){const dpr=Math.max(1,Math.min(2,devicePixelRatio||1));canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0);}
+  addEventListener('resize',resize);resize();
+
+  function installSelector(){
+    const options=document.querySelector('.menuOptions');
+    if(!options||document.getElementById('abv630TeamModeField'))return;
+    const field=document.createElement('div');field.className='menuField';field.id='abv630TeamModeField';
+    field.innerHTML=`<label for="abv630TeamMode">Battle queue</label><select id="abv630TeamMode">${Object.values(PRESETS).map(p=>`<option value="${p.id}" ${p.id===selected?'selected':''}>${p.name}</option>`).join('')}</select><small id="abv630TeamModeDesc">${esc(PRESETS[selected]?.desc||PRESETS['1v1'].desc)}</small>`;
+    const economy=document.getElementById('modeSelect')?.closest('.menuField');
+    options.insertBefore(field,economy||options.firstChild);
+    const select=field.querySelector('select'),desc=field.querySelector('small');
+    select.onchange=()=>{selected=PRESETS[select.value]?select.value:'1v1';localStorage.setItem('aetherbeds.teamMode',selected);desc.textContent=PRESETS[selected].desc;};
+  }
+
+  function installRankLock(){
+    const body=document.getElementById('abv5Body');if(!body||document.getElementById('abv630RankLock'))return;
+    const note=document.createElement('div');note.id='abv630RankLock';note.textContent='Ranked integrity lock: gameplay modules are disabled until the match ends.';body.parentNode.insertBefore(note,body);
+  }
+
+  function ellipse(cx,cy,rx,ry,tile){for(let y=Math.floor(cy-ry-1);y<=Math.ceil(cy+ry+1);y++)for(let x=Math.floor(cx-rx-1);x<=Math.ceil(cx+rx+1);x++){const nx=(x-cx)/rx,ny=(y-cy)/ry;if(nx*nx+ny*ny<=1&&x>=0&&y>=0&&x<api.constants.MAP_W&&y<api.constants.MAP_H)api.map[y*api.constants.MAP_W+x]=tile;}}
+  function bridge(x1,y1,x2,y2,tile,width=1){const steps=Math.ceil(Math.hypot(x2-x1,y2-y1)*2);for(let i=0;i<=steps;i++){const t=i/steps,x=Math.round(x1+(x2-x1)*t),y=Math.round(y1+(y2-y1)*t);for(let oy=-width;oy<=width;oy++)for(let ox=-width;ox<=width;ox++){const tx=x+ox,ty=y+oy;if(tx>=0&&ty>=0&&tx<api.constants.MAP_W&&ty<api.constants.MAP_H)api.map[ty*api.constants.MAP_W+tx]=tile;}}}
+  function prepareArena(){
+    if(active.id==='1v1'||active.id==='ranked')return;
+    const C=api.constants;
+    ellipse(38,24,13,9,C.MID);
+    for(const [team] of active.teams){const [bx,by]=TEAM_META[team].base;ellipse(bx,by,active.id==='10v10'?12:9,active.id==='10v10'?8:6,team==='red'||team==='blue'?C.GRASS:C.STONE);bridge(bx,by,38,24,C.STONE,active.id==='10v10'?2:1);}
+    if(active.id==='10v10')bridge(13,35,62,12,C.STONE,2);
+    // Reset anti-cheat map baseline while the match-start grace window is active.
+    api.syncGameAction?.(1200);
+  }
+
+  function coreBed(team){return team==='red'?api.redBed:team==='blue'?api.blueBed:null;}
+  function teamBed(team){return coreBed(team)||extraBeds.find(b=>b.team===team)||null;}
+  function bedAlive(team){return !!teamBed(team)?.alive;}
+  function teamCore(team){return team==='red'?api.player:team==='blue'?api.enemy:null;}
+  function teamAgents(team){return agents.filter(a=>a.team===team);}
+  function livingCount(team){let n=teamAgents(team).filter(alive).length;const c=teamCore(team);if(alive(c))n++;return n;}
+  function teamEliminated(team){return !bedAlive(team)&&livingCount(team)===0;}
+  function hostile(a,b){return a&&b&&a.team!==b.team;}
+  function teamObject(team){return {team};}
+
+  function makeBed(team){const [bx,by]=TEAM_META[team].base,T=api.constants.TILE;return {team,x:bx*T+2,y:by*T+3,w:60,h:27,hp:34,maxHp:34,alive:true};}
+  function spawnPoint(team,index=0){const [bx,by]=TEAM_META[team].base,T=api.constants.TILE;const angle=(index*2.399)+.4,r=20+Math.floor(index/5)*13;return{x:bx*T+16+Math.cos(angle)*r,y:by*T+16+Math.sin(angle)*r};}
+  function makeAgent(team,index){const s=spawnPoint(team,index),meta=TEAM_META[team];return{id:`${team}-${index}-${matchSerial}`,team,name:`${meta.name} ${index+1}`,x:s.x,y:s.y,vx:0,vy:0,r:14,hp:24,maxHp:24,alive:true,invuln:1,respawn:0,attackCd:Math.random()*.35,think:Math.random()*.2,speed:188+Math.random()*18,damage:4.4,armor:0,skill:.48+Math.min(.42,(api.enemy?.profile?.skill||2)*.09)+Math.random()*.08,target:null,final:false};}
+
+  function spawnTeams(){
+    agents=[];extraBeds=[];
+    for(const [team,size] of active.teams){if(team!=='red'&&team!=='blue')extraBeds.push(makeBed(team));const coreCount=(team==='red'||team==='blue')?1:0;for(let i=coreCount;i<size;i++)agents.push(makeAgent(team,i));}
+  }
+
+  function disableRankedCheats(){
+    const menu=window.AetherBedsMenuV5;if(!menu)return;
+    for(const name of Object.keys(menu.toggles||{})){if(!menu.toggles[name])continue;try{menu.modules?.[name]?.off?.();}catch{}menu.toggles[name]=false;document.querySelector(`.abMod[data-name="${CSS.escape(name)}"]`)?.classList.remove('on');}
+    menu.save?.();
+  }
+  function enforceRanked(){if(!active?.ranked)return;disableRankedCheats();document.body.classList.add('abv630Ranked');}
+
+  function startMatch(){
+    active=PRESETS[selected]||PRESETS['1v1'];matchSerial++;finishing=false;resultRecorded=false;scoreboardHeld=false;
+    prepareArena();spawnTeams();
+    if(active.ranked){enforceRanked();setTimeout(enforceRanked,120);}else document.body.classList.remove('abv630Ranked');
+    chip.style.display='flex';updateUI();
+    api.toast?.(`${active.name} started${active.ranked?' · ranked integrity lock enabled':''}.`);
+  }
+  function cleanup(){agents=[];extraBeds=[];active=null;chip.style.display='none';board.classList.remove('open');document.body.classList.remove('abv630Ranked');}
+
+  function ratingData(){try{return JSON.parse(localStorage.getItem('aetherbeds.ranked')||'null')||{rating:1000,wins:0,losses:0,placements:0};}catch{return{rating:1000,wins:0,losses:0,placements:0};}}
+  function division(r){if(r>=1800)return'Champion';if(r>=1550)return'Diamond';if(r>=1350)return'Platinum';if(r>=1150)return'Gold';if(r>=950)return'Silver';return'Bronze';}
+  function recordRanked(win){if(!active?.ranked||resultRecorded)return;resultRecorded=true;const d=ratingData(),skill=api.enemy?.profile?.skill||2,placement=d.placements<5?1.35:1,delta=Math.round((win?(10+skill*6):-(8+skill*3))*placement);d.rating=Math.max(0,d.rating+delta);d[win?'wins':'losses']++;d.placements=Math.min(5,d.placements+1);localStorage.setItem('aetherbeds.ranked',JSON.stringify(d));api.toast?.(`Ranked ${win?'win':'loss'}: ${delta>=0?'+':''}${delta} rating · ${division(d.rating)} ${d.rating}`);}
+
+  function interceptEndGame(win){
+    if(!active||finishing)return false;
+    if(active.ranked){recordRanked(win);return false;}
+    if(!win)return false;
+    const opponents=active.teams.map(x=>x[0]).filter(t=>t!=='red');
+    if(opponents.some(t=>!teamEliminated(t))){api.toast?.('A team was eliminated, but the match continues.');return true;}
+    return false;
+  }
+
+  function finish(win){if(finishing||!active)return;finishing=true;if(active.ranked)recordRanked(win);setTimeout(()=>api.gameEnd?.(win),0);}
+
+  function respawnAgent(a){const s=spawnPoint(a.team,Number(a.id.split('-')[1])||0);a.x=s.x;a.y=s.y;a.vx=a.vy=0;a.hp=a.maxHp;a.alive=true;a.invuln=1.2;a.respawn=0;a.target=null;}
+  function killAgent(a,killerTeam){if(!alive(a))return;a.alive=false;a.hp=0;a.respawn=3.5;a.final=!bedAlive(a.team);api.burst?.(a.x,a.y,TEAM_META[a.team].soft,12);if(a.final)api.floatText?.('FINAL',a.x,a.y-28,'#ffd166');if(killerTeam==='red'&&api.player)api.player.kills=(api.player.kills||0)+1;}
+  function damageAgent(a,amount,killerTeam){if(!alive(a)||a.invuln>0)return;a.hp-=Math.max(1,amount*(1-a.armor*.1));a.invuln=.22;api.floatText?.(`-${Math.round(amount)}`,a.x,a.y-24,TEAM_META[killerTeam]?.soft||'#fff');if(a.hp<=0)killAgent(a,killerTeam);}
+
+  function entityCandidates(a){const out=[];const p=api.player,e=api.enemy;if(alive(p)&&a.team!=='red')out.push({kind:'core',entity:p,team:'red'});if(alive(e)&&a.team!=='blue')out.push({kind:'core',entity:e,team:'blue'});for(const other of agents)if(alive(other)&&hostile(a,other))out.push({kind:'agent',entity:other,team:other.team});return out;}
+  function bedCandidates(a){const out=[];for(const [team] of active.teams){if(team===a.team)continue;const b=teamBed(team);if(b?.alive)out.push({kind:'bed',entity:b,team});}return out;}
+  function chooseTarget(a){const entities=entityCandidates(a);let best=null,bestD=Infinity;for(const c of entities){const d=distance(a,c.entity);if(d<bestD){bestD=d;best=c;}}if(best&&bestD<310)return best;for(const c of bedCandidates(a)){const b={x:c.entity.x+c.entity.w/2,y:c.entity.y+c.entity.h/2};const d=distance(a,b);if(d<bestD){bestD=d;best={...c,point:b};}}return best||entities[0]||null;}
+
+  function walkAgent(a,tx,ty,dt){let dx=tx-a.x,dy=ty-a.y;const len=Math.hypot(dx,dy)||1;dx/=len;dy/=len;const desired=a.speed;const nx=a.x+dx*desired*dt,ny=a.y+dy*desired*dt;if(api.isWalkableAt(nx,ny)){a.x=nx;a.y=ny;}else{const side1={x:a.x-dy*desired*dt,y:a.y+dx*desired*dt},side2={x:a.x+dy*desired*dt,y:a.y-dx*desired*dt};if(api.isWalkableAt(side1.x,side1.y)){a.x=side1.x;a.y=side1.y;}else if(api.isWalkableAt(side2.x,side2.y)){a.x=side2.x;a.y=side2.y;}}
+  }
+
+  function attackCore(a,target){if(a.attackCd>0||!alive(target))return;a.attackCd=.52+(1-a.skill)*.22;const source=target===api.player?'blue':'red';api.gameDamageEntity?.(target,a.damage+(performance.now()/1000>90?1.4:0),source);const angle=Math.atan2(target.y-a.y,target.x-a.x);target.vx=(target.vx||0)+Math.cos(angle)*95;target.vy=(target.vy||0)+Math.sin(angle)*95;}
+  function attackBed(a,target,team,dt){target.hp-=dt*(2.1+a.skill*2.2);if(Math.random()<dt*4)api.burst?.(target.x+target.w/2,target.y+target.h/2,TEAM_META[team].soft,2);if(target.hp>0)return;if(team==='red'||team==='blue')api.gameBreakBed?.(team);else{target.hp=0;target.alive=false;api.toast?.(`${TEAM_META[team].name} bed destroyed by ${TEAM_META[a.team].name}.`);api.burst?.(target.x+target.w/2,target.y+target.h/2,TEAM_META[team].soft,20);}}
+
+  function updateAgents(dt){
+    if(!active||api.state!=='playing')return;
+    const elapsed=performance.now()/1000;
+    for(const a of agents){
+      if(!a.alive){a.respawn-=dt;if(a.respawn<=0&&bedAlive(a.team))respawnAgent(a);continue;}
+      a.invuln=Math.max(0,a.invuln-dt);a.attackCd=Math.max(0,a.attackCd-dt);a.think-=dt;
+      if(a.think<=0||!a.target||(a.target.kind!=='bed'&&!alive(a.target.entity))||(a.target.kind==='bed'&&!a.target.entity.alive)){a.target=chooseTarget(a);a.think=.18+(1-a.skill)*.3;}
+      const t=a.target;if(!t)continue;const tx=t.kind==='bed'?(t.entity.x+t.entity.w/2):t.entity.x,ty=t.kind==='bed'?(t.entity.y+t.entity.h/2):t.entity.y,d=Math.hypot(tx-a.x,ty-a.y);
+      if(t.kind==='bed'&&d<70)attackBed(a,t.entity,t.team,dt);else if(t.kind==='agent'&&d<47){if(a.attackCd<=0){a.attackCd=.5+(1-a.skill)*.2;damageAgent(t.entity,a.damage,a.team);}}else if(t.kind==='core'&&d<54)attackCore(a,t.entity);else walkAgent(a,tx,ty,dt);
+      if(elapsed%45<dt){a.damage=Math.min(8.5,a.damage+.32);a.armor=Math.min(3,a.armor+.2);}
+    }
+    handleProjectileHits();
+    const opponents=active.teams.map(x=>x[0]).filter(t=>t!=='red');if(opponents.length&&opponents.every(teamEliminated))finish(true);
+  }
+
+  function handleProjectileHits(){const arr=api.projectiles||[];for(let i=arr.length-1;i>=0;i--){const pr=arr[i];if(pr.team!=='red')continue;let hit=null;for(const a of agents){if(alive(a)&&a.team!=='red'&&Math.hypot(pr.x-a.x,pr.y-a.y)<a.r+10){hit=a;break;}}if(hit){damageAgent(hit,pr.kind==='fireball'?9:pr.kind==='tnt'?11:5.5,'red');arr.splice(i,1);}}}
+
+  function playerAttackExtra(event){
+    if(!active||api.state!=='playing'||event.button!==0||window.AetherBedsInputGuard?.isUIEvent?.(event)||window.AetherBedsInputGuard?.typing?.())return;
+    const now=performance.now();if(now-lastSwing<250)return;lastSwing=now;const p=api.player;if(!alive(p))return;let best=null,bestScore=Infinity;
+    for(const a of agents){if(!alive(a)||a.team==='red')continue;const reach=Math.hypot(p.x-a.x,p.y-a.y),cursor=Math.hypot(api.mouse.worldX-a.x,api.mouse.worldY-a.y);if(reach<108&&cursor<58&&cursor<bestScore){best=a;bestScore=cursor;}}
+    if(best){const dmg=(5+(p.sword||0)*2.2+(p.sharpness||0)*1.25)*(1+Math.min(p.combo||0,5)*.035);damageAgent(best,dmg,'red');const ang=Math.atan2(best.y-p.y,best.x-p.x);best.x+=Math.cos(ang)*12;best.y+=Math.sin(ang)*12;return;}
+    for(const bed of extraBeds){if(!bed.alive||bed.team==='red')continue;const cx=bed.x+bed.w/2,cy=bed.y+bed.h/2;if(Math.hypot(p.x-cx,p.y-cy)<112&&Math.hypot(api.mouse.worldX-cx,api.mouse.worldY-cy)<68){bed.hp-=2.2+(p.pickaxe||0)*2+(p.haste||0);api.burst?.(cx,cy,TEAM_META[bed.team].soft,5);if(bed.hp<=0){bed.hp=0;bed.alive=false;p.bedBreaks=(p.bedBreaks||0)+1;api.toast?.(`${TEAM_META[bed.team].name} bed destroyed.`);}break;}}
+  }
+  addEventListener('mousedown',playerAttackExtra,true);
+
+  function updateUI(){
+    if(!active)return;const d=ratingData(),rank=active.ranked?`<span class="rank">${division(d.rating)} ${d.rating}</span>`:'';const aliveTeams=active.teams.filter(([t])=>!teamEliminated(t)).length;chip.innerHTML=`<b>${esc(active.name)}</b><span>${aliveTeams}/${active.teams.length} teams</span>${rank}<span>Tab: scoreboard</span>`;
+    board.innerHTML=`<div class="abv630ScoreHead"><span>${esc(active.name)} scoreboard</span><span>${Math.floor((window.AetherBedsV6?.state?.elapsed)||0)}s</span></div>${active.teams.map(([team,size])=>{const bed=teamBed(team),living=livingCount(team),elim=teamEliminated(team);return`<div class="abv630TeamRow ${elim?'abv630Elim':''}"><span class="abv630Dot" style="color:${TEAM_META[team].color};background:${TEAM_META[team].color}"></span><b style="color:${TEAM_META[team].color}">${TEAM_META[team].name}</b><span>${living}/${size} alive</span><span class="${bed?.alive?'abv630BedAlive':'abv630BedDead'}">${bed?.alive?`Bed ${Math.ceil(bed.hp)}`:'Bed ✕'}</span></div>`;}).join('')}`;
+  }
+
+  function drawBar(x,y,w,p,color){ctx.fillStyle='rgba(0,0,0,.52)';ctx.fillRect(x,y,w,4);ctx.fillStyle=color;ctx.fillRect(x,y,w*clamp(p,0,1),4);}
+  function draw(){ctx.clearRect(0,0,innerWidth,innerHeight);if(!active||api.state!=='playing')return;const camX=api.camX||0,camY=api.camY||0;
+    for(const b of extraBeds){const x=b.x-camX,y=b.y-camY,meta=TEAM_META[b.team];ctx.save();ctx.globalAlpha=b.alive?1:.25;ctx.fillStyle=meta.color;ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(x,y,b.w,b.h,7);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(255,255,255,.82)';ctx.fillRect(x+7,y+5,18,b.h-10);if(b.alive)drawBar(x,y-8,b.w,b.hp/b.maxHp,meta.color);ctx.restore();}
+    for(const a of agents){if(!alive(a))continue;const x=a.x-camX,y=a.y-camY,meta=TEAM_META[a.team];ctx.save();if(a.invuln>0&&Math.floor(a.invuln*18)%2===0)ctx.globalAlpha=.5;ctx.shadowColor=meta.color;ctx.shadowBlur=11;ctx.fillStyle=meta.color;ctx.beginPath();ctx.arc(x,y,a.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle='rgba(255,255,255,.9)';ctx.beginPath();ctx.arc(x+5,y-4,2.4,0,Math.PI*2);ctx.fill();drawBar(x-18,y-25,36,a.hp/a.maxHp,meta.color);if(scoreboardHeld||Math.hypot((api.player?.x||0)-a.x,(api.player?.y||0)-a.y)<150){ctx.fillStyle='#edf2ff';ctx.font='700 8px Inter,system-ui';ctx.textAlign='center';ctx.fillText(a.name,x,y-31);}ctx.restore();}
+  }
+
+  addEventListener('keydown',event=>{
+    if(window.AetherBedsInputGuard?.typing?.())return;
+    if(event.code==='Tab'&&active&&api?.state==='playing'){event.preventDefault();scoreboardHeld=true;board.classList.add('open');}
+    if(active?.ranked){const menu=window.AetherBedsMenuV5;if(menu&&Object.values(menu.keybinds||{}).includes(event.code)){event.preventDefault();event.stopImmediatePropagation();api.toast?.('Gameplay modules are locked in Ranked.');}}
+  },true);
+  addEventListener('keyup',event=>{if(event.code==='Tab'){scoreboardHeld=false;board.classList.remove('open');}},true);
+  addEventListener('click',event=>{if(active?.ranked&&event.target.closest?.('.abMod')){event.preventDefault();event.stopImmediatePropagation();api.toast?.('Gameplay modules are locked in Ranked.');}},true);
+
+  function frame(now){requestAnimationFrame(frame);if(!api)return;const dt=Math.min(.033,Math.max(0,(now-lastTick)/1000));lastTick=now;const st=api.state;if(st!==lastCoreState){if(st==='playing')startMatch();else if(lastCoreState==='playing'&&st!=='playing'){if(active?.ranked&&!resultRecorded)recordRanked(st==='gameover'&&api.enemy&&!api.enemy.alive);setTimeout(cleanup,80);}lastCoreState=st;}if(st==='playing'){if(active?.ranked&&Math.floor(now/500)!==Math.floor((now-dt*1000)/500))enforceRanked();updateAgents(dt);if(Math.floor(now/200)!==Math.floor((now-dt*1000)/200))updateUI();}draw();}
+
+  function boot(){api=window.AetherBedsModAPI;if(!api)return false;installSelector();installRankLock();lastCoreState=api.state;requestAnimationFrame(frame);return true;}
+  const wait=setInterval(()=>{installSelector();installRankLock();if(boot())clearInterval(wait);},80);
+
+  window.AetherBedsModes={PRESETS,get active(){return active;},get selected(){return selected;},set selected(v){if(PRESETS[v])selected=v;},get agents(){return agents;},get beds(){return extraBeds;},interceptEndGame,finish,teamEliminated};
 })();
 </script>
 
