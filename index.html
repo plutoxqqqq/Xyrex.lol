@@ -116,7 +116,7 @@
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="shortcut icon" href="./favicon.ico" />
   <link rel="apple-touch-icon" sizes="180x180" href="./favicon.ico" />
-  <link rel="stylesheet" href="./style.css?v=2.0.7" />
+  <link rel="stylesheet" href="./style.css?v=2.1.0" />
   <link rel="stylesheet" href="./lore.css?v=1.0.0" />
 </head>
 <body>
@@ -198,6 +198,14 @@
         </section>
 
         <section class="filter-group">
+          <h3 class="filter-title">Live Status</h3>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="statusState" value="up" /> Working</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="statusState" value="down" /> Not working</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="statusState" value="unstable" /> Unstable</label>
+          <label><input type="checkbox" class="filter-checkbox" data-filter-group="statusState" value="unknown" /> Unknown</label>
+        </section>
+
+        <section class="filter-group">
           <h3 class="filter-title">Key System</h3>
           <label><input type="checkbox" class="filter-checkbox" data-filter-group="keySystem" value="Keyed" /> Keyed</label>
           <label><input type="checkbox" class="filter-checkbox" data-filter-group="keySystem" value="Keyless" /> Keyless</label>
@@ -232,6 +240,20 @@
           <div class="legend-item"><span class="legend-icon sunc">S</span><span>sUNC</span></div>
         </div>
 
+        <div class="executor-toolbar">
+          <span id="executorResultMeta" class="executor-result-meta" aria-live="polite"></span>
+          <label class="script-sort-label" for="executorSortSelect">
+            <span>Sort</span>
+            <select id="executorSortSelect" class="script-sort-select">
+              <option value="featured">Featured first</option>
+              <option value="name">Name (A to Z)</option>
+              <option value="sunc">Highest sUNC</option>
+              <option value="trust">Most trusted</option>
+              <option value="price">Lowest price</option>
+            </select>
+          </label>
+        </div>
+
         <section id="productGrid" class="product-grid" aria-live="polite" data-nosnippet></section>
 
         <div id="noResults" class="no-results" hidden>
@@ -247,10 +269,10 @@
         <div class="subtabs" role="tablist" aria-label="Scripts hub tabs">
           <button class="subtab-btn is-active" role="tab" aria-selected="true" data-subtab-target="smartRankingsPanel">Smart Rankings</button>
           <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="comparisonPanel">Executor Comparison</button>
-          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="assistantPanel">Exploit Assistant [NEW]</button>
-          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="popularScriptsPanel">Popular Scripts [UPDATED]</button>
+          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="assistantPanel">Exploit Assistant</button>
+          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="popularScriptsPanel">Script Library</button>
           <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="savedScriptsPanel">Saved Scripts</button>
-          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="recentChangesPanel">Recent Changes</button>
+          <button class="subtab-btn" role="tab" aria-selected="false" data-subtab-target="recentChangesPanel">Changelog</button>
         </div>
 
         <section id="smartRankingsPanel" class="subtab-panel" role="tabpanel">
@@ -285,30 +307,73 @@
         </section>
 
         <section id="popularScriptsPanel" class="subtab-panel" role="tabpanel" hidden>
-          <h3>Popular Scripts</h3>
+          <h3>Script Library</h3>
+          <p class="comparison-note">Copy-ready Roblox scripts with status, key system, and executor requirements. Open any script to see which executors listed on this site can run it</p>
+
+          <div class="script-toolbar">
+            <div class="script-search-wrap">
+              <input id="scriptSearchInput" class="script-search-input" type="search" placeholder="Search scripts, games, or features..." aria-label="Search the script library" autocomplete="off" />
+              <button id="scriptSearchClear" class="script-search-clear" type="button" title="Clear script search" aria-label="Clear script search" hidden>✕</button>
+            </div>
+            <label class="script-sort-label" for="scriptSortSelect">
+              <span>Sort</span>
+              <select id="scriptSortSelect" class="script-sort-select">
+                <option value="recommended">Recommended</option>
+                <option value="updated">Recently updated</option>
+                <option value="name">Name (A to Z)</option>
+                <option value="sunc">Lowest sUNC needed</option>
+              </select>
+            </label>
+            <div class="script-view-toggle" role="group" aria-label="Script library layout">
+              <button class="script-view-btn is-active" type="button" data-script-view="grouped">Grouped</button>
+              <button class="script-view-btn" type="button" data-script-view="grid">All scripts</button>
+            </div>
+          </div>
+
+          <div id="scriptFilterChips" class="script-filter-chips" role="group" aria-label="Script filters"></div>
+          <div id="scriptResultMeta" class="script-result-meta" aria-live="polite"></div>
           <div id="popularScriptsList" class="script-list"></div>
+          <p class="script-submit-note">Know a script that belongs here? Suggest it in the <a href="https://discord.gg/6X8cyjUcAj" target="_blank" rel="noopener noreferrer">Xyrex Discord</a></p>
         </section>
 
         <section id="savedScriptsPanel" class="subtab-panel" role="tabpanel" hidden>
           <h3>Saved Scripts</h3>
-          <label class="input-label" for="savedScriptName">Script title</label>
-          <input id="savedScriptName" class="script-input" type="text" placeholder="Example: Auto Farm v2" />
+          <p class="comparison-note">Your own scripts, stored in this browser only. Nothing is uploaded anywhere</p>
 
-          <label class="input-label" for="savedScriptBody">Script content</label>
-          <textarea id="savedScriptBody" class="script-textarea" placeholder="Paste your script here..."></textarea>
+          <div class="saved-editor">
+            <label class="input-label" for="savedScriptName">Script title</label>
+            <input id="savedScriptName" class="script-input" type="text" placeholder="Example: Auto Farm v2" autocomplete="off" />
 
-          <div class="saved-script-actions">
-            <button id="saveScriptBtn" class="btn-primary" type="button">Save Script</button>
-            <button id="deleteScriptBtn" class="btn-danger" type="button">Delete</button>
+            <div class="saved-editor-label-row">
+              <label class="input-label" for="savedScriptBody">Script content</label>
+              <span id="savedScriptCounter" class="saved-editor-counter">0 characters</span>
+            </div>
+            <textarea id="savedScriptBody" class="script-textarea" placeholder="Paste your script here..." spellcheck="false"></textarea>
+
+            <div class="saved-script-actions">
+              <button id="saveScriptBtn" class="btn-primary" type="button">Save Script</button>
+              <button id="newScriptBtn" class="btn-ghost-outline" type="button">New</button>
+              <button id="deleteScriptBtn" class="btn-danger" type="button">Delete</button>
+              <span id="savedEditorStatus" class="saved-editor-status" aria-live="polite"></span>
+            </div>
+
+            <div id="savedScriptError" class="saved-error" hidden>Please provide both a script title and script content</div>
           </div>
 
-          <div id="savedScriptError" class="saved-error" hidden>Please provide both a script title and script content</div>
+          <div class="saved-list-toolbar">
+            <input id="savedScriptSearch" class="script-search-input" type="search" placeholder="Search saved scripts..." aria-label="Search saved scripts" autocomplete="off" />
+            <button id="exportScriptsBtn" class="btn-ghost-outline" type="button">Export</button>
+            <button id="importScriptsBtn" class="btn-ghost-outline" type="button">Import</button>
+            <input id="importScriptsInput" type="file" accept="application/json,.json" hidden />
+          </div>
+
           <div id="savedScriptsList" class="saved-script-list"></div>
         </section>
 
         <section id="recentChangesPanel" class="subtab-panel" role="tabpanel" hidden>
-          <h3>Recent Changes</h3>
-          <ul id="recentChangesList" class="dev-list"></ul>
+          <h3>Changelog</h3>
+          <p class="comparison-note">What changed on Xyrex, newest first</p>
+          <div id="recentChangesList" class="changelog-list"></div>
         </section>
       </section>
 
@@ -326,8 +391,9 @@
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" defer></script>
   <script src="./lore.js?v=1.0.0" defer></script>
   <script src="./data/executor-data.js?v=1.0.0" defer></script>
-  <script src="./data/popular-scripts.js?v=1.0.0" defer></script>
-  <script src="./script.js?v=2.0.18" defer></script>
+  <script src="./data/popular-scripts.js?v=2.0.0" defer></script>
+  <script src="./data/site-changelog.js?v=1.0.0" defer></script>
+  <script src="./script.js?v=2.1.0" defer></script>
   <!-- Sequence clue: Logo -> Search -> Subtitle -> Featured -> Logo -->
 </body>
 </html>

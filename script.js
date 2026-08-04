@@ -23,10 +23,10 @@ function formatDuration(ms) {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-const NO_OFFICIAL_DISCORD_MESSAGE = 'This script does not have an official discord server';
-const POPULAR_SCRIPT_CATEGORIES = [
-  'Bedwars',
+const POPULAR_SCRIPT_CATEGORY_ORDER = [
   'Universal',
+  'Bedwars',
+  'Rivals',
   'Grace',
   'Pressure',
   'Doors',
@@ -377,18 +377,7 @@ function initWeaoStatuses() {
 }
 
 const scriptsHubData = {
-  smartRankingLabels: {
-    bestFree: 'Best Free',
-    safest: 'Safest Right Now',
-    beginners: 'Best for Beginners',
-    powerful: 'Most Powerful'
-  },
-
-  popularScripts: Array.isArray(window.XYREX_POPULAR_SCRIPTS) ? window.XYREX_POPULAR_SCRIPTS : [],
-
-  recentChanges: [
-    'For the latest changes, updates, and bug fixes, join the official Xyrex Discord server'
-  ]
+  popularScripts: Array.isArray(window.XYREX_POPULAR_SCRIPTS) ? window.XYREX_POPULAR_SCRIPTS : []
 };
 
 
@@ -616,13 +605,40 @@ function createProductCard(product, index) {
 }
 
 const CARD_EXIT_ANIMATION_MS = 210;
+const EXECUTOR_SORT_KEY = 'xyrex_executor_sort';
+let executorSortMode = 'featured';
+
+function sortExecutors(list) {
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const sorted = [...list];
+
+  if (executorSortMode === 'name') return sorted.sort(byName);
+  if (executorSortMode === 'sunc') {
+    return sorted.sort((a, b) => (Number.isFinite(b.sunc) ? b.sunc : -1) - (Number.isFinite(a.sunc) ? a.sunc : -1) || byName(a, b));
+  }
+  if (executorSortMode === 'trust') {
+    const trustRank = { High: 3, Medium: 2, Low: 1, Unknown: 0 };
+    return sorted.sort((a, b) => (trustRank[b.trustLevel] ?? 0) - (trustRank[a.trustLevel] ?? 0) || byName(a, b));
+  }
+  if (executorSortMode === 'price') return sorted.sort((a, b) => estimatedPriceValue(a) - estimatedPriceValue(b) || byName(a, b));
+
+  return sorted.sort((a, b) => (a.featured === b.featured ? byName(a, b) : a.featured ? -1 : 1));
+}
+
+function renderExecutorResultMeta(shownCount) {
+  const meta = qs('#executorResultMeta');
+  if (!meta) return;
+  const total = products.length;
+  const word = shownCount === 1 ? 'executor' : 'executors';
+  meta.textContent = shownCount === total
+    ? `${total} ${word} listed`
+    : `Showing ${shownCount} of ${total} ${word}`;
+}
 
 function renderProducts(list) {
   const grid = qs('#productGrid');
-  const sorted = [...list].sort((a, b) => {
-    if (a.featured === b.featured) return a.name.localeCompare(b.name);
-    return a.featured ? -1 : 1;
-  });
+  const sorted = sortExecutors(list);
+  renderExecutorResultMeta(sorted.length);
 
   if (!grid.dataset.renderVersion) grid.dataset.renderVersion = '0';
   const nextVersion = String(Number(grid.dataset.renderVersion) + 1);
@@ -711,17 +727,36 @@ function isPriceMatch(prod, priceControls) {
   return false;
 }
 
+function getExecutorSearchHaystack(prod) {
+  return [
+    prod.name,
+    prod.description,
+    prod.cheatType,
+    prod.keySystem,
+    prod.stability,
+    prod.status,
+    ...(prod.platform || []),
+    ...(prod.tags || []),
+    ...(prod.features || []),
+    ...(prod.pricingOptions || [])
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
 function applyAllFilters() {
   const active = getActiveFilters();
   const priceControls = getPriceControls();
-  const searchText = qs('#searchInput').value.trim();
+  const searchTerms = qs('#searchInput').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
   const filtered = products.filter(prod => {
-    if (searchText && !prod.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+    if (searchTerms.length) {
+      const haystack = getExecutorSearchHaystack(prod);
+      if (!searchTerms.every(term => haystack.includes(term))) return false;
+    }
     if (active.platform?.length && !active.platform.some(platform => (prod.platform || []).includes(platform))) return false;
     if (active.tags?.length && !active.tags.every(tag => [...(prod.tags || []), ...(prod.features || [])].includes(tag))) return false;
     if (active.cheatType?.length && !active.cheatType.includes(prod.cheatType)) return false;
     if (active.keySystem?.length && !active.keySystem.includes(prod.keySystem)) return false;
+    if (active.statusState?.length && !active.statusState.includes(getWeaoStatusState(prod.weaoStatus))) return false;
     if (!isPriceMatch(prod, priceControls)) return false;
     return true;
   });
@@ -1381,30 +1416,6 @@ function openSettingsModal() {
   qs('#modalCloseBtn').focus();
 }
 
-function openNoOfficialDiscordModal(scriptName = '') {
-  const overlay = qs('#modalOverlay');
-  const content = qs('#modalContent');
-  if (!overlay || !content) return;
-
-  setCompactModal(true);
-  lastModalTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const safeName = stripTrailingPeriod(scriptName);
-  content.innerHTML = `
-    <section class="discord-unavailable-modal" aria-live="polite">
-      <div class="discord-unavailable-icon" aria-hidden="true">
-        ${popularScriptDiscordSvg}
-        <span>!</span>
-      </div>
-      <h2>No Official Discord</h2>
-      <p class="modal-headline">${safeName ? `<strong>${escapeHtml(safeName)}</strong> does not have an official Discord server.` : escapeHtml(NO_OFFICIAL_DISCORD_MESSAGE)}</p>
-    </section>`;
-
-  overlay.classList.remove('is-closing');
-  overlay.setAttribute('aria-hidden', 'false');
-  qs('#modalCloseBtn').focus();
-}
-
-
 function openNoAiTokensModal(message = NO_ASSISTANT_TOKENS_MESSAGE) {
   const overlay = qs('#modalOverlay');
   const content = qs('#modalContent');
@@ -1473,7 +1484,7 @@ function estimatedPriceValue(product) {
 function computeSmartRanking() {
   const clampScore = value => Math.max(0, Math.min(100, Math.round(value)));
   const mapValue = (value, map) => map[String(value || '').toLowerCase()] ?? null;
-  const trustScoreMap = { trusted: 96, caution: 68, risky: 36, unknown: 52, low: 36 };
+  const trustScoreMap = { high: 96, trusted: 96, medium: 68, caution: 68, low: 36, risky: 36, unknown: 52 };
   const stabilityScoreLabelMap = { 'very stable': 100, stable: 92, high: 96, medium: 72, mixed: 62, basic: 48, questionable: 34, low: 46, unstable: 30, unknown: 42 };
   const normalizeList = value => Array.isArray(value) ? value.filter(Boolean).map(String) : [];
   const hasValue = value => value !== null && value !== undefined && String(value).trim() !== '';
@@ -1730,7 +1741,16 @@ function renderComparisonSystem() {
       renderComparisonSystem();
     });
   });
-  selectedRow.innerHTML = comparisonSelection.length ? `Selected: ${comparisonSelection.map(name => `${escapeHtml(name)} ×`).join(' ').replace(/ ×$/, '')}` : 'Selected: None';
+  selectedRow.innerHTML = comparisonSelection.length
+    ? `<span class="comparison-selected-label">Selected</span>${comparisonSelection.map(name => `<button class="comparison-selected-chip" type="button" data-compare-remove="${escapeHtml(name)}" title="Remove ${escapeHtml(name)}">${escapeHtml(name)}<span aria-hidden="true">✕</span></button>`).join('')}`
+    : '<span class="comparison-selected-label">Select 2 to 3 executors below</span>';
+
+  selectedRow.querySelectorAll('[data-compare-remove]').forEach(button => {
+    button.addEventListener('click', () => {
+      comparisonSelection = comparisonSelection.filter(item => item !== button.getAttribute('data-compare-remove'));
+      renderComparisonSystem();
+    });
+  });
 
   const selectedProducts = comparisonSelection
     .map(name => products.find(item => item.name === name))
@@ -1773,10 +1793,10 @@ function renderComparisonSystem() {
     { label: 'Detection Risk', values: riskValues, display: selectedProducts.map((item, idx) => `${detectionRiskLabel(item)} (${riskValues[idx]}/10)`), best: 'min' },
     { label: 'Price', values: priceValues, display: selectedProducts.map(item => item.pricingOptions?.[0] || item.freeOrPaid), best: 'min' },
     { label: 'Platform', values: platformValues, display: selectedProducts.map(item => (item.platform || []).join(', ')), best: 'max' },
-    { label: 'Key System', values: selectedProducts.map(item => String(item.keySystem || '').toLowerCase() === 'key' ? 0 : 1), display: selectedProducts.map(item => item.keySystem || 'Unknown'), best: 'max' },
-    { label: 'Cheat Type', values: selectedProducts.map(item => item.cheatType === 'internal' ? 1 : 0), display: selectedProducts.map(item => item.cheatType || 'Unknown'), best: null },
-    { label: 'Status', values: selectedProducts.map(item => String(item.status || '').toLowerCase().includes('up') ? 1 : 0), display: selectedProducts.map(item => item.status || 'Unknown'), best: null },
-    { label: 'Trust Level', values: selectedProducts.map(item => ({ trusted: 3, caution: 2, unknown: 1, risky: 0 }[String(item.trustLevel || '').toLowerCase()] ?? 1)), display: selectedProducts.map(item => item.trustLevel || 'Unknown'), best: 'max' },
+    { label: 'Key System', values: selectedProducts.map(item => /keyless/i.test(item.keySystem || '') ? 1 : 0), display: selectedProducts.map(item => item.keySystem || 'Unknown'), best: 'max' },
+    { label: 'Cheat Type', values: selectedProducts.map(item => /internal/i.test(item.cheatType || '') ? 1 : 0), display: selectedProducts.map(item => item.cheatType || 'Unknown'), best: null },
+    { label: 'Status', values: selectedProducts.map(item => /undetected|working/i.test(item.status || '') ? 1 : 0), display: selectedProducts.map(item => item.status || 'Unknown'), best: null },
+    { label: 'Trust Level', values: selectedProducts.map(item => ({ high: 3, trusted: 3, medium: 2, caution: 2, low: 0, risky: 0 }[String(item.trustLevel || '').toLowerCase()] ?? 1)), display: selectedProducts.map(item => item.trustLevel || 'Unknown'), best: 'max' },
     { label: 'Features', values: selectedProducts.map(item => (item.features || []).length), display: selectedProducts.map(item => (item.features || []).join(', ') || 'None listed'), best: 'max' },
     { label: 'Pros', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.pros || []).slice(0, 3).join(', ') || 'None listed'), best: null },
     { label: 'Cons', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.cons || []).slice(0, 3).join(', ') || 'None listed'), best: null },
@@ -1808,73 +1828,100 @@ function renderComparisonSystem() {
   tableWrap.hidden = false;
 }
 
-function renderPopularScripts() {
-  const wrap = qs('#popularScriptsList');
-  if (!wrap) return;
-  const scripts = Array.isArray(scriptsHubData.popularScripts) ? scriptsHubData.popularScripts : [];
-  const groupedScripts = groupScriptsByCategory(scripts);
-  const categories = getPopularScriptCategories(groupedScripts);
-  if (!categories.length) {
-    wrap.innerHTML = '<div class="script-empty-state"><p>No scripts found</p><p>Try a different search or category</p></div>';
-    return;
-  }
-  const defaultOpenCategory = null;
-  wrap.classList.add('popular-script-categories');
-  wrap.innerHTML = categories.map((categoryName, index) => {
-    const items = groupedScripts[categoryName] || [];
-    const isOpen = categoryName === defaultOpenCategory;
-    return renderScriptCategory(categoryName, items, isOpen, index);
-  }).join('');
+const SCRIPT_FAVORITES_KEY = 'xyrex_script_favorites_v1';
+const SCRIPT_VIEW_KEY = 'xyrex_script_view_v1';
+const SCRIPT_SORT_KEY = 'xyrex_script_sort_v1';
 
-  if (!wrap.dataset.popularScriptsBound) {
-    wrap.addEventListener('click', async event => {
-      const headerButton = event.target.closest('.script-category-header');
-      if (headerButton && wrap.contains(headerButton)) {
-        toggleScriptCategory(headerButton.closest('.script-category'));
-        return;
-      }
-      const unavailableDiscordButton = event.target.closest('[data-discord-unavailable="true"]');
-      if (unavailableDiscordButton && wrap.contains(unavailableDiscordButton)) {
-        event.preventDefault();
-        event.stopPropagation();
-        openNoOfficialDiscordModal(unavailableDiscordButton.getAttribute('data-script-name') || '');
-        return;
-      }
-      const copyButton = event.target.closest('.script-copy-btn');
-      if (!copyButton || !wrap.contains(copyButton)) return;
-      event.stopPropagation();
-      const scriptValue = copyButton.getAttribute('data-script-copy') || '';
-      if (!scriptValue) return;
-      try {
-        await navigator.clipboard.writeText(scriptValue);
-        copyButton.classList.add('is-copied');
-        window.setTimeout(() => copyButton.classList.remove('is-copied'), 900);
-      } catch (error) {
-        // no-op
-      }
-    });
-    wrap.dataset.popularScriptsBound = 'true';
+const SCRIPT_FILTERS = [
+  { id: 'favorites', label: 'Favorites', match: script => getScriptFavorites().includes(script.id) },
+  { id: 'working', label: 'Working', match: script => script.status === 'Working' },
+  { id: 'keyless', label: 'Keyless', match: script => /keyless/i.test(script.keySystem) },
+  { id: 'free', label: 'Free', match: script => script.access === 'free' && /free/i.test(script.price) },
+  { id: 'mobile', label: 'Mobile', match: script => script.platform.some(item => /mobile|android|ios/i.test(item)) },
+  { id: 'lowsunc', label: 'Low sUNC', match: script => script.suncMin <= 80 }
+];
+
+const scriptLibraryState = {
+  search: '',
+  sort: 'recommended',
+  view: 'grouped',
+  filters: new Set(),
+  collapsed: new Set()
+};
+
+let scriptCatalogCache = null;
+let scriptToastTimerId = null;
+
+function showToast(message, tone = 'info') {
+  if (!message) return;
+  let toast = qs('#xyrexToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'xyrexToast';
+    toast.className = 'xyrex-toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.dataset.tone = tone;
+  toast.classList.add('is-visible');
+  if (scriptToastTimerId) window.clearTimeout(scriptToastTimerId);
+  scriptToastTimerId = window.setTimeout(() => toast.classList.remove('is-visible'), 2200);
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text || '');
+  if (!value) return false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Falls through to the manual selection path below.
+  }
+  try {
+    const helper = document.createElement('textarea');
+    helper.value = value;
+    helper.setAttribute('readonly', '');
+    helper.style.position = 'fixed';
+    helper.style.top = '-1000px';
+    helper.style.opacity = '0';
+    document.body.appendChild(helper);
+    helper.select();
+    const copied = document.execCommand('copy');
+    helper.remove();
+    return copied;
+  } catch {
+    return false;
   }
 }
 
-function groupScriptsByCategory(scripts) {
-  return scripts.reduce((acc, script) => {
-    const name = stripTrailingPeriod(script.category || script.game || 'Other') || 'Other';
-    if (!acc[name]) acc[name] = [];
-    acc[name].push(script);
-    return acc;
-  }, {});
+function parseSuncFloor(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw || /^any/i.test(raw)) return 0;
+  const found = raw.match(/\d+(?:\.\d+)?/);
+  if (!found) return 0;
+  return Math.max(0, Math.min(100, Number(found[0])));
 }
 
-function getPopularScriptCategories(groupedScripts) {
-  const configuredCategories = POPULAR_SCRIPT_CATEGORIES.map(category => {
-    const existingCategory = Object.keys(groupedScripts).find(name => name.toLowerCase() === category.toLowerCase());
-    return existingCategory || category;
-  });
-  const extraCategories = Object.keys(groupedScripts).filter(category => (
-    !configuredCategories.some(configuredCategory => configuredCategory.toLowerCase() === category.toLowerCase())
-  ));
-  return [...configuredCategories, ...extraCategories];
+function slugifyScriptId(value, fallbackIndex) {
+  const slug = String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || `script-${fallbackIndex}`;
+}
+
+function getScriptStatusTone(status) {
+  if (/working|stable/i.test(status)) return 'positive';
+  if (/buggy|issue|mixed/i.test(status)) return 'warning';
+  if (/patched|down|discontinued|dead/i.test(status)) return 'danger';
+  return 'info';
+}
+
+function getScriptAccessLabel(script) {
+  if (script.access === 'paid') return 'Paid only';
+  if (script.access === 'invite') return 'Invite only';
+  return '';
 }
 
 function getScriptDiscordUrl(stats = {}) {
@@ -1885,66 +1932,456 @@ function getScriptDiscordUrl(stats = {}) {
   return discord;
 }
 
-function getScriptBadges(script) {
-  const stats = script.stats || {};
-  const badges = [];
-  const addBadge = (label, type) => {
-    if (!label) return;
-    badges.push({ label, type });
-  };
-  addBadge(stats.price, /free|keyless|stable|working/i.test(stats.price || '') ? 'positive' : 'info');
-  addBadge(stats.keySystem, /keyless/i.test(stats.keySystem || '') ? 'positive' : /keyed/i.test(stats.keySystem || '') ? 'warning' : 'info');
-  addBadge(stats.suncRequired ? `sUNC ${stats.suncRequired}` : '', 'info');
-  addBadge(stats.bestExecutor ? `Best: ${stats.bestExecutor}` : '', 'info');
-  addBadge(stats.stability, /stable/i.test(stats.stability || '') ? 'positive' : /unstable|buggy/i.test(stats.stability || '') ? 'warning' : 'info');
-  if (typeof stats.buggy === 'boolean') addBadge(stats.buggy ? 'Buggy' : 'Not Buggy', stats.buggy ? 'warning' : 'positive');
-  addBadge(stats.status, /working/i.test(stats.status || '') ? 'positive' : /patched|down/i.test(stats.status || '') ? 'warning' : 'info');
-  if (Array.isArray(stats.platform)) stats.platform.forEach(platform => addBadge(platform, 'info'));
-  return badges.filter(badge => badge.label && !/unknown/i.test(badge.label));
+function getScriptCatalog() {
+  if (scriptCatalogCache) return scriptCatalogCache;
+  const source = Array.isArray(scriptsHubData.popularScripts) ? scriptsHubData.popularScripts : [];
+  const usedIds = new Set();
+
+  scriptCatalogCache = source.map((raw, index) => {
+    const stats = raw.stats || {};
+    const rawScript = typeof raw.script === 'string' ? raw.script.trim() : '';
+    // Older entries stored notes like "PURCHASE FROM DISCORD" in the script field.
+    const isPlaceholder = Boolean(rawScript) && !/[({]/.test(rawScript) && rawScript === rawScript.toUpperCase();
+    const access = String(raw.access || (isPlaceholder ? 'paid' : 'free')).toLowerCase();
+
+    let id = slugifyScriptId(raw.id || raw.name, index);
+    while (usedIds.has(id)) id = `${id}-${index}`;
+    usedIds.add(id);
+
+    const discordUrl = getScriptDiscordUrl(stats);
+    return {
+      id,
+      name: raw.name || 'Untitled script',
+      category: stripTrailingPeriod(raw.category || raw.game || 'Other') || 'Other',
+      description: stripTrailingPeriod(raw.description || ''),
+      script: access === 'free' && !isPlaceholder ? rawScript : '',
+      access,
+      accessNote: raw.accessNote || (isPlaceholder ? rawScript : ''),
+      tags: Array.isArray(raw.tags) ? raw.tags.filter(Boolean).map(String) : [],
+      updated: String(raw.updated || ''),
+      price: cleanMalformedPriceText(stats.price || 'Unknown'),
+      keySystem: stats.keySystem || 'Unknown',
+      suncRequired: stats.suncRequired || 'Any %',
+      suncMin: Number.isFinite(stats.suncMin) ? stats.suncMin : parseSuncFloor(stats.suncRequired),
+      bestExecutor: stats.bestExecutor || 'Any compatible executor',
+      stability: stats.stability || 'Unknown',
+      status: String(stats.status || (stats.buggy ? 'Buggy' : 'Working')),
+      platform: Array.isArray(stats.platform) ? stats.platform.filter(Boolean).map(String) : [],
+      discordUrl,
+      discordState: discordUrl ? 'linked' : stats.discordIcon === false ? 'missing' : 'none'
+    };
+  });
+
+  return scriptCatalogCache;
+}
+
+function getScriptById(scriptId) {
+  return getScriptCatalog().find(item => item.id === scriptId) || null;
+}
+
+function getScriptFavorites() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SCRIPT_FAVORITES_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function toggleScriptFavorite(scriptId) {
+  const favorites = getScriptFavorites();
+  const next = favorites.includes(scriptId) ? favorites.filter(item => item !== scriptId) : [scriptId, ...favorites];
+  localStorage.setItem(SCRIPT_FAVORITES_KEY, JSON.stringify(next));
+  return next.includes(scriptId);
+}
+
+function getScriptSearchHaystack(script) {
+  return [
+    script.name,
+    script.category,
+    script.description,
+    script.bestExecutor,
+    script.keySystem,
+    script.status,
+    script.price,
+    script.suncRequired,
+    ...script.tags,
+    ...script.platform
+  ].join(' ').toLowerCase();
+}
+
+function getFilteredScripts() {
+  const activeFilters = SCRIPT_FILTERS.filter(filter => scriptLibraryState.filters.has(filter.id));
+  const terms = scriptLibraryState.search.toLowerCase().split(/\s+/).filter(Boolean);
+
+  return getScriptCatalog().filter(script => {
+    if (activeFilters.some(filter => !filter.match(script))) return false;
+    if (!terms.length) return true;
+    const haystack = getScriptSearchHaystack(script);
+    return terms.every(term => haystack.includes(term));
+  });
+}
+
+function getScriptCategoryRank(categoryName) {
+  const index = POPULAR_SCRIPT_CATEGORY_ORDER.findIndex(name => name.toLowerCase() === String(categoryName).toLowerCase());
+  return index === -1 ? POPULAR_SCRIPT_CATEGORY_ORDER.length : index;
+}
+
+function sortScripts(list) {
+  const sorted = [...list];
+  if (scriptLibraryState.sort === 'name') return sorted.sort((a, b) => a.name.localeCompare(b.name));
+  if (scriptLibraryState.sort === 'sunc') return sorted.sort((a, b) => a.suncMin - b.suncMin || a.name.localeCompare(b.name));
+  if (scriptLibraryState.sort === 'updated') return sorted.sort((a, b) => b.updated.localeCompare(a.updated) || a.name.localeCompare(b.name));
+
+  const favorites = getScriptFavorites();
+  const statusRank = script => (/working/i.test(script.status) ? 0 : /buggy/i.test(script.status) ? 1 : 2);
+  return sorted.sort((a, b) => {
+    const favoriteDelta = Number(favorites.includes(b.id)) - Number(favorites.includes(a.id));
+    if (favoriteDelta) return favoriteDelta;
+    const statusDelta = statusRank(a) - statusRank(b);
+    if (statusDelta) return statusDelta;
+    const categoryDelta = getScriptCategoryRank(a.category) - getScriptCategoryRank(b.category);
+    if (categoryDelta) return categoryDelta;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function getCompatibleExecutors(script) {
+  const measured = products.filter(product => Number.isFinite(product.sunc));
+  const passing = measured
+    .filter(product => product.sunc >= script.suncMin)
+    .sort((a, b) => b.sunc - a.sunc || a.name.localeCompare(b.name));
+  return { measuredCount: measured.length, passing };
+}
+
+function renderScriptStatGrid(script) {
+  const rows = [
+    ['Game', script.category],
+    ['Key system', script.keySystem],
+    ['sUNC needed', script.suncRequired],
+    ['Platforms', script.platform.length ? script.platform.join(', ') : 'Not listed']
+  ];
+  return `<dl class="script-stat-grid">${rows.map(([label, value]) => `
+    <div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}</dl>`;
+}
+
+function renderScriptDiscordButton(script) {
+  if (script.discordState !== 'linked') return '';
+  return `<a class="script-discord-btn" href="${escapeHtml(script.discordUrl)}" target="_blank" rel="noopener noreferrer" title="Open Discord" aria-label="Open Discord for ${escapeHtml(script.name)}">${popularScriptDiscordSvg}</a>`;
 }
 
 function renderScriptCard(script) {
-  const badges = getScriptBadges(script);
-  const stats = script.stats || {};
-  const discordUrl = getScriptDiscordUrl(stats);
-  const discordButton = discordUrl
-    ? `<a class="script-discord-btn" href="${escapeHtml(discordUrl)}" target="_blank" rel="noopener noreferrer" title="Open Discord" aria-label="Open Discord for ${escapeHtml(script.name)}">${popularScriptDiscordSvg}</a>`
-    : stats.discordIcon === false
-      ? `<button class="script-discord-btn script-discord-btn-unavailable" type="button" data-discord-unavailable="true" data-script-name="${escapeHtml(script.name)}" title="No official Discord" aria-label="No official Discord for ${escapeHtml(script.name)}">${popularScriptDiscordSvg}<span class="script-discord-alert" aria-hidden="true">!</span></button>`
-      : '';
+  const isFavorite = getScriptFavorites().includes(script.id);
+  const accessLabel = getScriptAccessLabel(script);
+  const copyButton = script.script
+    ? `<button class="script-copy-btn" type="button" data-script-copy-id="${escapeHtml(script.id)}" title="Copy script" aria-label="Copy the ${escapeHtml(script.name)} script"><span class="script-file-icon">${popularScriptCopySvg}</span></button>`
+    : '';
+
   return `
-    <article class="script-card">
+    <article class="script-card" data-script-id="${escapeHtml(script.id)}">
       <div class="script-card-head">
-        <h4 class="script-card-title">${escapeHtml(script.name)}</h4>
+        <div class="script-card-heading">
+          <h4 class="script-card-title">${escapeHtml(script.name)}</h4>
+          <span class="script-status-pill ${getScriptStatusTone(script.status)}">${escapeHtml(script.status)}</span>
+          ${accessLabel ? `<span class="script-status-pill info">${escapeHtml(accessLabel)}</span>` : ''}
+        </div>
         <div class="script-card-meta">
-          ${discordButton}
-          <button class="script-copy-btn" type="button" data-script-copy="${escapeHtml(script.script)}" title="Copy script" aria-label="Copy script">
-            <span class="script-file-icon">${popularScriptFileSvg}</span>
-          </button>
+          <button class="script-fav-btn ${isFavorite ? 'is-active' : ''}" type="button" data-script-favorite="${escapeHtml(script.id)}" aria-pressed="${isFavorite}" title="${isFavorite ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${isFavorite ? 'Remove' : 'Add'} ${escapeHtml(script.name)} ${isFavorite ? 'from' : 'to'} favorites">★</button>
+          ${renderScriptDiscordButton(script)}
+          ${copyButton}
         </div>
       </div>
-      <p>${escapeHtml(stripTrailingPeriod(script.description))}</p>
-      ${badges.length ? `<div class="script-stat-badges">${badges.map(badge => `<span class="script-stat-badge ${badge.type}">${escapeHtml(badge.label)}</span>`).join('')}</div>` : ''}
-      <div class="script-code-wrap">
-        <pre>${escapeHtml(script.script)}</pre>
+      <p class="script-card-description">${escapeHtml(script.description)}</p>
+      ${renderScriptStatGrid(script)}
+      ${script.tags.length ? `<div class="script-tag-row">${script.tags.map(tag => `<span class="script-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+      <div class="script-card-actions">
+        <button class="btn-ghost-outline" type="button" data-script-details="${escapeHtml(script.id)}">View details</button>
+        ${script.script ? `<button class="btn-ghost-outline" type="button" data-script-toggle-code="${escapeHtml(script.id)}" aria-expanded="false">Show script</button>` : ''}
       </div>
+      ${script.script
+        ? `<div class="script-code-wrap" data-script-code="${escapeHtml(script.id)}" hidden><pre>${escapeHtml(script.script)}</pre></div>`
+        : `<p class="script-access-note">${escapeHtml(script.accessNote || 'This script is not distributed publicly')}</p>`}
     </article>`;
 }
 
-function renderScriptCategory(categoryName, scripts, isOpen, index) {
+function renderScriptCategory(categoryName, scripts, index) {
+  const isOpen = !scriptLibraryState.collapsed.has(categoryName);
   return `
     <section class="script-category" data-category-name="${escapeHtml(categoryName)}">
-      <button class="script-category-header" type="button" aria-expanded="${isOpen ? 'true' : 'false'}" aria-controls="script-category-body-${index}">
+      <button class="script-category-header" type="button" aria-expanded="${isOpen}" aria-controls="script-category-body-${index}">
         <span class="script-category-title">${escapeHtml(categoryName)}</span>
         <span class="script-category-meta">
           <span class="script-category-count">${scripts.length}</span>
           <span class="script-category-arrow" aria-hidden="true">▼</span>
         </span>
       </button>
-      <div id="script-category-body-${index}" class="script-category-body ${isOpen ? 'open' : ''}">
-        ${scripts.length ? scripts.map(renderScriptCard).join('') : '<div class="script-empty-state"><p>No scripts added yet</p><p>Please wait for a new update</p></div>'}
+      <div id="script-category-body-${index}" class="script-category-body ${isOpen ? 'open' : ''}"${isOpen ? ' style="max-height:none"' : ''}>
+        ${scripts.map(renderScriptCard).join('')}
       </div>
     </section>`;
+}
+
+function renderScriptResultMeta(total, shown, categoryCount) {
+  const meta = qs('#scriptResultMeta');
+  if (!meta) return;
+  const isFiltered = shown !== total;
+  const scriptWord = shown === 1 ? 'script' : 'scripts';
+  const categoryWord = categoryCount === 1 ? 'category' : 'categories';
+  meta.textContent = isFiltered
+    ? `Showing ${shown} of ${total} ${scriptWord} across ${categoryCount} ${categoryWord}`
+    : `${total} ${scriptWord} across ${categoryCount} ${categoryWord}`;
+}
+
+function renderScriptFilterChips() {
+  const wrap = qs('#scriptFilterChips');
+  if (!wrap) return;
+  const catalog = getScriptCatalog();
+  const chips = SCRIPT_FILTERS.map(filter => {
+    const count = catalog.filter(filter.match).length;
+    const isActive = scriptLibraryState.filters.has(filter.id);
+    return `<button class="script-filter-chip ${isActive ? 'is-active' : ''}" type="button" data-script-filter="${filter.id}" aria-pressed="${isActive}"${count ? '' : ' disabled'}>${escapeHtml(filter.label)}<span class="script-filter-count">${count}</span></button>`;
+  });
+  if (scriptLibraryState.filters.size || scriptLibraryState.search) {
+    chips.push('<button class="script-filter-chip script-filter-reset" type="button" data-script-reset="true">Reset</button>');
+  }
+  wrap.innerHTML = chips.join('');
+}
+
+function syncScriptToolbar() {
+  const searchInput = qs('#scriptSearchInput');
+  if (searchInput && searchInput.value !== scriptLibraryState.search) searchInput.value = scriptLibraryState.search;
+  const clearBtn = qs('#scriptSearchClear');
+  if (clearBtn) clearBtn.hidden = !scriptLibraryState.search;
+  const sortSelect = qs('#scriptSortSelect');
+  if (sortSelect && sortSelect.value !== scriptLibraryState.sort) sortSelect.value = scriptLibraryState.sort;
+  qsa('.script-view-btn').forEach(button => {
+    button.classList.toggle('is-active', button.getAttribute('data-script-view') === scriptLibraryState.view);
+  });
+  renderScriptFilterChips();
+}
+
+function renderPopularScripts() {
+  const wrap = qs('#popularScriptsList');
+  if (!wrap) return;
+  syncScriptToolbar();
+
+  const catalog = getScriptCatalog();
+  const matches = sortScripts(getFilteredScripts());
+  const categories = [...new Set(matches.map(script => script.category))]
+    .sort((a, b) => getScriptCategoryRank(a) - getScriptCategoryRank(b) || a.localeCompare(b));
+  renderScriptResultMeta(catalog.length, matches.length, categories.length);
+
+  if (!catalog.length) {
+    wrap.innerHTML = '<div class="script-empty-state"><p>The script library is empty</p><p>Scripts appear here as soon as they are added to the catalog</p></div>';
+    return;
+  }
+
+  if (!matches.length) {
+    wrap.classList.remove('popular-script-categories', 'script-grid-view');
+    wrap.innerHTML = `
+      <div class="script-empty-state">
+        <p>No scripts match your search or filters</p>
+        <button class="btn-ghost-outline" type="button" data-script-reset="true">Clear search and filters</button>
+      </div>`;
+  } else if (scriptLibraryState.view === 'grid') {
+    wrap.classList.remove('popular-script-categories');
+    wrap.classList.add('script-grid-view');
+    wrap.innerHTML = matches.map(renderScriptCard).join('');
+  } else {
+    wrap.classList.add('popular-script-categories');
+    wrap.classList.remove('script-grid-view');
+    wrap.innerHTML = categories
+      .map((categoryName, index) => renderScriptCategory(categoryName, matches.filter(script => script.category === categoryName), index))
+      .join('');
+  }
+
+  bindScriptLibraryEvents(wrap);
+}
+
+function resetScriptLibraryFilters() {
+  scriptLibraryState.search = '';
+  scriptLibraryState.filters.clear();
+  renderPopularScripts();
+}
+
+async function handleScriptCopy(button, script) {
+  const copied = await copyTextToClipboard(script.script);
+  if (!copied) {
+    showToast('Could not copy automatically, select the script text instead', 'warning');
+    return;
+  }
+  showToast(`${script.name} copied to clipboard`, 'positive');
+  if (!button) return;
+  button.classList.add('is-copied');
+  window.setTimeout(() => button.classList.remove('is-copied'), 900);
+}
+
+function bindScriptLibraryEvents(wrap) {
+  if (wrap.dataset.popularScriptsBound === 'true') return;
+
+  wrap.addEventListener('click', async event => {
+    const resetButton = event.target.closest('[data-script-reset]');
+    if (resetButton) {
+      resetScriptLibraryFilters();
+      return;
+    }
+
+    const favoriteButton = event.target.closest('[data-script-favorite]');
+    if (favoriteButton) {
+      event.stopPropagation();
+      const scriptId = favoriteButton.getAttribute('data-script-favorite');
+      const isFavorite = toggleScriptFavorite(scriptId);
+      showToast(isFavorite ? 'Added to favorites' : 'Removed from favorites', 'info');
+      renderPopularScripts();
+      return;
+    }
+
+    const detailsButton = event.target.closest('[data-script-details]');
+    if (detailsButton) {
+      event.stopPropagation();
+      openScriptDetailModal(detailsButton.getAttribute('data-script-details'));
+      return;
+    }
+
+    const codeToggle = event.target.closest('[data-script-toggle-code]');
+    if (codeToggle) {
+      event.stopPropagation();
+      const scriptId = codeToggle.getAttribute('data-script-toggle-code');
+      const codeBlock = wrap.querySelector(`[data-script-code="${CSS.escape(scriptId)}"]`);
+      if (!codeBlock) return;
+      const nextHidden = !codeBlock.hidden;
+      codeBlock.hidden = nextHidden;
+      codeToggle.setAttribute('aria-expanded', String(!nextHidden));
+      codeToggle.textContent = nextHidden ? 'Show script' : 'Hide script';
+      return;
+    }
+
+    const copyButton = event.target.closest('[data-script-copy-id]');
+    if (copyButton) {
+      event.stopPropagation();
+      const script = getScriptById(copyButton.getAttribute('data-script-copy-id'));
+      if (script) await handleScriptCopy(copyButton, script);
+      return;
+    }
+
+    const headerButton = event.target.closest('.script-category-header');
+    if (headerButton) {
+      const categoryElement = headerButton.closest('.script-category');
+      const categoryName = categoryElement?.getAttribute('data-category-name') || '';
+      if (scriptLibraryState.collapsed.has(categoryName)) {
+        scriptLibraryState.collapsed.delete(categoryName);
+      } else {
+        scriptLibraryState.collapsed.add(categoryName);
+      }
+      toggleScriptCategory(categoryElement);
+    }
+  });
+
+  wrap.dataset.popularScriptsBound = 'true';
+}
+
+function buildScriptCompatibilityMarkup(script) {
+  const { measuredCount, passing } = getCompatibleExecutors(script);
+  if (!measuredCount) {
+    return '<p class="script-modal-empty">No executor on this site has a measured sUNC score yet, so compatibility cannot be checked</p>';
+  }
+  if (!script.suncMin) {
+    return `<p class="script-modal-note">This script has no sUNC floor, so any working executor should load it. ${measuredCount} listed executors have a measured score</p>`;
+  }
+  if (!passing.length) {
+    return `<p class="script-modal-note">None of the ${measuredCount} executors with a measured sUNC score reach ${escapeHtml(String(script.suncMin))}%</p>`;
+  }
+  return `
+    <p class="script-modal-note">${passing.length} of ${measuredCount} executors with a measured sUNC score reach ${escapeHtml(String(script.suncMin))}%</p>
+    <div class="script-compat-chips">
+      ${passing.map(product => `<span class="script-compat-chip">${escapeHtml(product.name)}<span>${escapeHtml(String(product.sunc))}%</span></span>`).join('')}
+    </div>`;
+}
+
+function openScriptDetailModal(scriptId) {
+  const script = getScriptById(scriptId);
+  const overlay = qs('#modalOverlay');
+  const content = qs('#modalContent');
+  if (!script || !overlay || !content) return;
+
+  setCompactModal(false);
+  lastModalTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+  const isFavorite = getScriptFavorites().includes(script.id);
+  const accessLabel = getScriptAccessLabel(script);
+  const detailRows = [
+    ['Game', script.category],
+    ['Status', script.status],
+    ['Price', script.price],
+    ['Key system', script.keySystem],
+    ['sUNC needed', script.suncRequired],
+    ['Best executor', script.bestExecutor],
+    ['Stability', script.stability],
+    ['Platforms', script.platform.length ? script.platform.join(', ') : 'Not listed'],
+    ['Discord', script.discordState === 'linked' ? 'Official server listed' : 'Not listed'],
+    ['Entry updated', script.updated || 'Not recorded']
+  ];
+
+  content.innerHTML = `
+    <section class="script-modal" data-script-id="${escapeHtml(script.id)}">
+      <div class="script-modal-head">
+        <div>
+          <h2>${escapeHtml(script.name)}</h2>
+          <p class="script-modal-description">${escapeHtml(script.description)}</p>
+        </div>
+        <div class="script-modal-pills">
+          <span class="script-status-pill ${getScriptStatusTone(script.status)}">${escapeHtml(script.status)}</span>
+          ${accessLabel ? `<span class="script-status-pill info">${escapeHtml(accessLabel)}</span>` : ''}
+        </div>
+      </div>
+
+      ${script.tags.length ? `<div class="script-tag-row">${script.tags.map(tag => `<span class="script-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+
+      <dl class="script-modal-stats">
+        ${detailRows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}
+      </dl>
+
+      <div class="script-modal-section">
+        <h3>Executors that can run this</h3>
+        ${buildScriptCompatibilityMarkup(script)}
+      </div>
+
+      <div class="script-modal-section">
+        <h3>${script.script ? 'Loader' : 'How to get it'}</h3>
+        ${script.script
+          ? `<div class="script-code-wrap"><pre>${escapeHtml(script.script)}</pre></div>`
+          : `<p class="script-modal-note">${escapeHtml(script.accessNote || 'This script is not distributed publicly')}</p>`}
+      </div>
+
+      <div class="script-modal-actions">
+        ${script.script ? '<button class="btn-primary" type="button" data-modal-copy-script>Copy script</button>' : ''}
+        ${script.script ? '<button class="btn-ghost-outline" type="button" data-modal-save-script>Save to my scripts</button>' : ''}
+        <button class="btn-ghost-outline" type="button" data-modal-copy-link>Copy link</button>
+        <button class="btn-ghost-outline ${isFavorite ? 'is-active' : ''}" type="button" data-modal-favorite>${isFavorite ? 'Remove favorite' : 'Add favorite'}</button>
+        ${script.discordState === 'linked' ? `<a class="btn-ghost-outline" href="${escapeHtml(script.discordUrl)}" target="_blank" rel="noopener noreferrer">Open Discord</a>` : ''}
+      </div>
+    </section>`;
+
+  content.querySelector('[data-modal-copy-script]')?.addEventListener('click', () => handleScriptCopy(null, script));
+  content.querySelector('[data-modal-copy-link]')?.addEventListener('click', async () => {
+    const link = `${window.location.origin}/scripthub?script=${encodeURIComponent(script.id)}`;
+    const copied = await copyTextToClipboard(link);
+    showToast(copied ? 'Link copied to clipboard' : 'Could not copy the link', copied ? 'positive' : 'warning');
+  });
+  content.querySelector('[data-modal-save-script]')?.addEventListener('click', () => {
+    saveScriptToLibrary(script);
+    showToast(`${script.name} saved to your scripts`, 'positive');
+  });
+  content.querySelector('[data-modal-favorite]')?.addEventListener('click', event => {
+    const nowFavorite = toggleScriptFavorite(script.id);
+    event.currentTarget.textContent = nowFavorite ? 'Remove favorite' : 'Add favorite';
+    event.currentTarget.classList.toggle('is-active', nowFavorite);
+    renderPopularScripts();
+  });
+
+  overlay.classList.remove('is-closing');
+  overlay.setAttribute('aria-hidden', 'false');
+  qs('#modalCloseBtn').focus();
 }
 
 function toggleScriptCategory(categoryElement) {
@@ -1983,10 +2420,107 @@ function toggleScriptCategory(categoryElement) {
   body.addEventListener('transitionend', onTransitionEnd);
 }
 
+function initScriptLibraryControls() {
+  const storedView = localStorage.getItem(SCRIPT_VIEW_KEY);
+  if (storedView === 'grid' || storedView === 'grouped') scriptLibraryState.view = storedView;
+  const storedSort = localStorage.getItem(SCRIPT_SORT_KEY);
+  if (storedSort && ['recommended', 'updated', 'name', 'sunc'].includes(storedSort)) scriptLibraryState.sort = storedSort;
+
+  const searchInput = qs('#scriptSearchInput');
+  searchInput?.addEventListener('input', () => {
+    scriptLibraryState.search = searchInput.value.trim();
+    renderPopularScripts();
+  });
+  searchInput?.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !searchInput.value) return;
+    event.stopPropagation();
+    searchInput.value = '';
+    scriptLibraryState.search = '';
+    renderPopularScripts();
+  });
+
+  qs('#scriptSearchClear')?.addEventListener('click', () => {
+    scriptLibraryState.search = '';
+    renderPopularScripts();
+    searchInput?.focus();
+  });
+
+  qs('#scriptSortSelect')?.addEventListener('change', event => {
+    scriptLibraryState.sort = event.target.value;
+    localStorage.setItem(SCRIPT_SORT_KEY, scriptLibraryState.sort);
+    renderPopularScripts();
+  });
+
+  qsa('.script-view-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      scriptLibraryState.view = button.getAttribute('data-script-view') === 'grid' ? 'grid' : 'grouped';
+      localStorage.setItem(SCRIPT_VIEW_KEY, scriptLibraryState.view);
+      renderPopularScripts();
+    });
+  });
+
+  qs('#scriptFilterChips')?.addEventListener('click', event => {
+    const resetButton = event.target.closest('[data-script-reset]');
+    if (resetButton) {
+      resetScriptLibraryFilters();
+      return;
+    }
+    const chip = event.target.closest('[data-script-filter]');
+    if (!chip) return;
+    const filterId = chip.getAttribute('data-script-filter');
+    if (scriptLibraryState.filters.has(filterId)) {
+      scriptLibraryState.filters.delete(filterId);
+    } else {
+      scriptLibraryState.filters.add(filterId);
+    }
+    renderPopularScripts();
+  });
+}
+
+// Captured before the router rewrites the path, which drops the query string.
+const requestedScriptId = new URLSearchParams(window.location.search).get('script') || '';
+
+function openScriptFromQueryParam() {
+  const scriptId = requestedScriptId;
+  if (!scriptId || !getScriptById(scriptId)) return;
+  syncNavButtonsWithPage('scriptsPage');
+  setActivePage('scriptsPage');
+  syncSubtabButtons('popularScriptsPanel');
+  setActiveSubtab('popularScriptsPanel');
+  openScriptDetailModal(scriptId);
+}
+
 function renderRecentChanges() {
   const wrap = qs('#recentChangesList');
   if (!wrap) return;
-  wrap.innerHTML = scriptsHubData.recentChanges.map(entry => `<li>${escapeHtml(entry)}</li>`).join('');
+  const releases = Array.isArray(window.XYREX_CHANGELOG) ? window.XYREX_CHANGELOG : [];
+  if (!releases.length) {
+    wrap.innerHTML = '<div class="script-empty-state"><p>No changelog entries yet</p></div>';
+    return;
+  }
+
+  const toneFor = type => ({ added: 'positive', fixed: 'info', changed: 'warning', removed: 'danger' }[String(type).toLowerCase()] || 'info');
+  const formatDate = value => {
+    const parsed = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  wrap.innerHTML = releases.map(release => `
+    <article class="changelog-entry">
+      <div class="changelog-entry-head">
+        <h4>${escapeHtml(release.version || 'Update')}</h4>
+        <time datetime="${escapeHtml(release.date || '')}">${escapeHtml(formatDate(release.date))}</time>
+      </div>
+      ${release.summary ? `<p class="changelog-summary">${escapeHtml(release.summary)}</p>` : ''}
+      <ul class="changelog-items">
+        ${(release.entries || []).map(entry => `
+          <li>
+            <span class="changelog-type ${toneFor(entry.type)}">${escapeHtml(entry.type || 'Changed')}</span>
+            <span>${escapeHtml(entry.text || '')}</span>
+          </li>`).join('')}
+      </ul>
+    </article>`).join('');
 }
 
 function getAssistantKnowledgeText(product) {
@@ -2723,11 +3257,21 @@ window.XyrexAISystem = Object.freeze({
 
 const savedScriptsStorageKey = 'xyrex_saved_scripts_v1';
 let currentSavedScriptId = null;
+let savedScriptsSearchTerm = '';
 
 function getSavedScripts() {
   try {
     const parsed = JSON.parse(localStorage.getItem(savedScriptsStorageKey) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(item => item && typeof item === 'object' && item.id)
+      .map(item => ({
+        id: String(item.id),
+        title: String(item.title || 'Untitled script'),
+        body: String(item.body || ''),
+        createdAt: Number(item.createdAt) || Number(item.updatedAt) || Date.now(),
+        updatedAt: Number(item.updatedAt) || Date.now()
+      }));
   } catch {
     return [];
   }
@@ -2737,21 +3281,71 @@ function writeSavedScripts(items) {
   localStorage.setItem(savedScriptsStorageKey, JSON.stringify(items));
 }
 
+function saveScriptToLibrary(script) {
+  const items = getSavedScripts();
+  const existing = items.find(item => item.title === script.name);
+  const now = Date.now();
+  const nextItem = {
+    id: existing?.id || `script_${now}`,
+    title: script.name,
+    body: script.script,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+  writeSavedScripts([nextItem, ...items.filter(item => item.id !== nextItem.id)]);
+  renderSavedScriptsList();
+}
+
+function formatByteSize(value) {
+  const characters = String(value || '').length;
+  if (characters < 1000) return `${characters} characters`;
+  return `${(characters / 1000).toFixed(1)}k characters`;
+}
+
 function renderSavedScriptsList() {
   const wrap = qs('#savedScriptsList');
   if (!wrap) return;
 
-  const items = getSavedScripts();
+  const items = getSavedScripts().sort((a, b) => b.updatedAt - a.updatedAt);
+  const term = savedScriptsSearchTerm.toLowerCase();
+  const visible = term
+    ? items.filter(item => `${item.title} ${item.body}`.toLowerCase().includes(term))
+    : items;
+
   if (!items.length) {
-    wrap.innerHTML = '<p class="saved-empty">No saved scripts yet</p>';
+    wrap.innerHTML = '<div class="script-empty-state"><p>No saved scripts yet</p><p>Paste a script above, or save one straight from the Script Library</p></div>';
     return;
   }
 
-  wrap.innerHTML = items.map(item => `
-    <button class="saved-script-item ${item.id === currentSavedScriptId ? 'is-active' : ''}" data-saved-script-id="${escapeHtml(item.id)}" type="button">
-      <strong>${escapeHtml(item.title)}</strong>
-      <span>${new Date(item.updatedAt).toLocaleString()}</span>
-    </button>`).join('');
+  if (!visible.length) {
+    wrap.innerHTML = '<div class="script-empty-state"><p>No saved scripts match that search</p></div>';
+    return;
+  }
+
+  wrap.innerHTML = visible.map(item => `
+    <article class="saved-script-item ${item.id === currentSavedScriptId ? 'is-active' : ''}" data-saved-item="${escapeHtml(item.id)}">
+      <button class="saved-script-open" type="button" data-saved-script-id="${escapeHtml(item.id)}">
+        <strong>${escapeHtml(item.title)}</strong>
+        <span>${escapeHtml(formatByteSize(item.body))} • updated ${escapeHtml(new Date(item.updatedAt).toLocaleString())}</span>
+      </button>
+      <div class="saved-script-item-actions">
+        <button class="btn-ghost-outline" type="button" data-saved-copy="${escapeHtml(item.id)}">Copy</button>
+        <button class="btn-ghost-outline" type="button" data-saved-delete="${escapeHtml(item.id)}">Delete</button>
+      </div>
+    </article>`).join('');
+}
+
+function updateSavedEditorCounter() {
+  const counter = qs('#savedScriptCounter');
+  const bodyInput = qs('#savedScriptBody');
+  if (!counter || !bodyInput) return;
+  counter.textContent = formatByteSize(bodyInput.value);
+}
+
+function setSavedEditorStatus(message = '') {
+  const status = qs('#savedEditorStatus');
+  if (!status) return;
+  status.textContent = message;
 }
 
 function clearSavedScriptEditor() {
@@ -2761,6 +3355,7 @@ function clearSavedScriptEditor() {
   nameInput.value = '';
   bodyInput.value = '';
   qs('#savedScriptError').hidden = true;
+  updateSavedEditorCounter();
 }
 
 function setEditorFromSavedScript(item) {
@@ -2769,6 +3364,8 @@ function setEditorFromSavedScript(item) {
   if (!nameInput || !bodyInput) return;
   nameInput.value = item?.title || '';
   bodyInput.value = item?.body || '';
+  updateSavedEditorCounter();
+  setSavedEditorStatus(item ? `Editing "${item.title}"` : '');
 }
 
 function saveScriptFromEditor() {
@@ -2788,28 +3385,158 @@ function saveScriptFromEditor() {
   errorBlock.hidden = true;
 
   const items = getSavedScripts();
+  const existing = items.find(item => item.id === currentSavedScriptId);
+  const now = Date.now();
   const scriptToPersist = {
-    id: currentSavedScriptId || `script_${Date.now()}`,
+    id: currentSavedScriptId || `script_${now}`,
     title: trimmedTitle,
     body: bodyInput.value,
-    updatedAt: Date.now()
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
   };
 
-  const withoutCurrent = items.filter(item => item.id !== currentSavedScriptId);
-  writeSavedScripts([scriptToPersist, ...withoutCurrent]);
+  writeSavedScripts([scriptToPersist, ...items.filter(item => item.id !== scriptToPersist.id)]);
   currentSavedScriptId = null;
   clearSavedScriptEditor();
   renderSavedScriptsList();
+  setSavedEditorStatus(`Saved "${trimmedTitle}"`);
+  showToast(`Saved "${trimmedTitle}"`, 'positive');
   nameInput.focus();
 }
 
-function deleteSelectedScript() {
-  if (!currentSavedScriptId) return;
-  const items = getSavedScripts().filter(item => item.id !== currentSavedScriptId);
-  writeSavedScripts(items);
-  currentSavedScriptId = null;
-  clearSavedScriptEditor();
+function deleteSavedScriptById(scriptId) {
+  const items = getSavedScripts();
+  const target = items.find(item => item.id === scriptId);
+  if (!target) return;
+  writeSavedScripts(items.filter(item => item.id !== scriptId));
+  if (currentSavedScriptId === scriptId) {
+    currentSavedScriptId = null;
+    clearSavedScriptEditor();
+  }
   renderSavedScriptsList();
+  setSavedEditorStatus(`Deleted "${target.title}"`);
+  showToast(`Deleted "${target.title}"`, 'info');
+}
+
+function deleteSelectedScript() {
+  if (!currentSavedScriptId) {
+    setSavedEditorStatus('Select a saved script first');
+    return;
+  }
+  deleteSavedScriptById(currentSavedScriptId);
+}
+
+function exportSavedScripts() {
+  const items = getSavedScripts();
+  if (!items.length) {
+    showToast('There is nothing to export yet', 'warning');
+    return;
+  }
+  const payload = JSON.stringify({ exportedAt: new Date().toISOString(), scripts: items }, null, 2);
+  const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `xyrex-saved-scripts-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${items.length} script${items.length === 1 ? '' : 's'}`, 'positive');
+}
+
+async function importSavedScripts(file) {
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    const incoming = Array.isArray(parsed) ? parsed : parsed?.scripts;
+    if (!Array.isArray(incoming)) throw new Error('Unexpected file shape');
+
+    const existing = getSavedScripts();
+    const merged = new Map(existing.map(item => [item.id, item]));
+    let added = 0;
+
+    incoming.forEach(item => {
+      if (!item || typeof item !== 'object' || !item.title || !item.body) return;
+      const id = String(item.id || `script_${Date.now()}_${added}`);
+      const current = merged.get(id);
+      const updatedAt = Number(item.updatedAt) || Date.now();
+      if (current && current.updatedAt >= updatedAt) return;
+      merged.set(id, {
+        id,
+        title: String(item.title),
+        body: String(item.body),
+        createdAt: Number(item.createdAt) || updatedAt,
+        updatedAt
+      });
+      added += 1;
+    });
+
+    writeSavedScripts([...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt));
+    renderSavedScriptsList();
+    showToast(added ? `Imported ${added} script${added === 1 ? '' : 's'}` : 'Nothing new to import', added ? 'positive' : 'info');
+  } catch {
+    showToast('That file could not be read as a Xyrex script export', 'warning');
+  }
+}
+
+function initSavedScripts() {
+  const listWrap = qs('#savedScriptsList');
+  listWrap?.addEventListener('click', async event => {
+    const copyTrigger = event.target.closest('[data-saved-copy]');
+    if (copyTrigger) {
+      const item = getSavedScripts().find(entry => entry.id === copyTrigger.getAttribute('data-saved-copy'));
+      if (!item) return;
+      const copied = await copyTextToClipboard(item.body);
+      showToast(copied ? `${item.title} copied to clipboard` : 'Could not copy that script', copied ? 'positive' : 'warning');
+      return;
+    }
+
+    const deleteTrigger = event.target.closest('[data-saved-delete]');
+    if (deleteTrigger) {
+      deleteSavedScriptById(deleteTrigger.getAttribute('data-saved-delete'));
+      return;
+    }
+
+    const openTrigger = event.target.closest('[data-saved-script-id]');
+    if (!openTrigger) return;
+    const selectedId = openTrigger.getAttribute('data-saved-script-id');
+    if (selectedId === currentSavedScriptId) {
+      currentSavedScriptId = null;
+      clearSavedScriptEditor();
+      setSavedEditorStatus('');
+      renderSavedScriptsList();
+      return;
+    }
+    currentSavedScriptId = selectedId;
+    setEditorFromSavedScript(getSavedScripts().find(item => item.id === currentSavedScriptId));
+    renderSavedScriptsList();
+  });
+
+  qs('#saveScriptBtn')?.addEventListener('click', saveScriptFromEditor);
+  qs('#deleteScriptBtn')?.addEventListener('click', deleteSelectedScript);
+  qs('#newScriptBtn')?.addEventListener('click', () => {
+    currentSavedScriptId = null;
+    clearSavedScriptEditor();
+    setSavedEditorStatus('');
+    renderSavedScriptsList();
+    qs('#savedScriptName')?.focus();
+  });
+
+  qs('#savedScriptBody')?.addEventListener('input', updateSavedEditorCounter);
+  qs('#savedScriptSearch')?.addEventListener('input', event => {
+    savedScriptsSearchTerm = event.target.value.trim();
+    renderSavedScriptsList();
+  });
+
+  qs('#exportScriptsBtn')?.addEventListener('click', exportSavedScripts);
+  const importInput = qs('#importScriptsInput');
+  qs('#importScriptsBtn')?.addEventListener('click', () => importInput?.click());
+  importInput?.addEventListener('change', async event => {
+    await importSavedScripts(event.target.files?.[0]);
+    event.target.value = '';
+  });
+
+  updateSavedEditorCounter();
 }
 
 
@@ -3130,9 +3857,11 @@ function initScriptsHub() {
   cleanupAetherCoreBranding();
   renderSmartRankings();
   renderComparisonSystem();
+  initScriptLibraryControls();
   renderPopularScripts();
   cleanupAetherCoreBranding();
   renderRecentChanges();
+  initSavedScripts();
   renderSavedScriptsList();
   initExploitAssistant();
 
@@ -3225,6 +3954,19 @@ function init() {
   applyExecutorTabPreferences();
   setBetaFeaturesEnabled(getBetaFeaturesEnabled());
   syncNavigationLayoutMetrics();
+
+  const storedExecutorSort = localStorage.getItem(EXECUTOR_SORT_KEY);
+  const executorSortSelect = qs('#executorSortSelect');
+  if (storedExecutorSort && ['featured', 'name', 'sunc', 'trust', 'price'].includes(storedExecutorSort)) {
+    executorSortMode = storedExecutorSort;
+    if (executorSortSelect) executorSortSelect.value = executorSortMode;
+  }
+  executorSortSelect?.addEventListener('change', event => {
+    executorSortMode = event.target.value;
+    localStorage.setItem(EXECUTOR_SORT_KEY, executorSortMode);
+    applyAllFilters();
+  });
+
   renderProducts(products);
   initWeaoStatuses();
   initScriptsHub();
@@ -3285,6 +4027,7 @@ function init() {
   });
 
   applyRoute(getInitialRoutePath(), true).finally(() => {
+    openScriptFromQueryParam();
     window.setTimeout(hideInitialLoadingOverlay, 1000);
   });
 
