@@ -23,10 +23,10 @@ function formatDuration(ms) {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-const NO_OFFICIAL_DISCORD_MESSAGE = 'This script does not have an official discord server';
-const POPULAR_SCRIPT_CATEGORIES = [
-  'Bedwars',
+const POPULAR_SCRIPT_CATEGORY_ORDER = [
   'Universal',
+  'Bedwars',
+  'Rivals',
   'Grace',
   'Pressure',
   'Doors',
@@ -377,18 +377,7 @@ function initWeaoStatuses() {
 }
 
 const scriptsHubData = {
-  smartRankingLabels: {
-    bestFree: 'Best Free',
-    safest: 'Safest Right Now',
-    beginners: 'Best for Beginners',
-    powerful: 'Most Powerful'
-  },
-
-  popularScripts: Array.isArray(window.XYREX_POPULAR_SCRIPTS) ? window.XYREX_POPULAR_SCRIPTS : [],
-
-  recentChanges: [
-    'For the latest changes, updates, and bug fixes, join the official Xyrex Discord server'
-  ]
+  popularScripts: Array.isArray(window.XYREX_POPULAR_SCRIPTS) ? window.XYREX_POPULAR_SCRIPTS : []
 };
 
 
@@ -616,13 +605,40 @@ function createProductCard(product, index) {
 }
 
 const CARD_EXIT_ANIMATION_MS = 210;
+const EXECUTOR_SORT_KEY = 'xyrex_executor_sort';
+let executorSortMode = 'featured';
+
+function sortExecutors(list) {
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const sorted = [...list];
+
+  if (executorSortMode === 'name') return sorted.sort(byName);
+  if (executorSortMode === 'sunc') {
+    return sorted.sort((a, b) => (Number.isFinite(b.sunc) ? b.sunc : -1) - (Number.isFinite(a.sunc) ? a.sunc : -1) || byName(a, b));
+  }
+  if (executorSortMode === 'trust') {
+    const trustRank = { High: 3, Medium: 2, Low: 1, Unknown: 0 };
+    return sorted.sort((a, b) => (trustRank[b.trustLevel] ?? 0) - (trustRank[a.trustLevel] ?? 0) || byName(a, b));
+  }
+  if (executorSortMode === 'price') return sorted.sort((a, b) => estimatedPriceValue(a) - estimatedPriceValue(b) || byName(a, b));
+
+  return sorted.sort((a, b) => (a.featured === b.featured ? byName(a, b) : a.featured ? -1 : 1));
+}
+
+function renderExecutorResultMeta(shownCount) {
+  const meta = qs('#executorResultMeta');
+  if (!meta) return;
+  const total = products.length;
+  const word = shownCount === 1 ? 'executor' : 'executors';
+  meta.textContent = shownCount === total
+    ? `${total} ${word} listed`
+    : `Showing ${shownCount} of ${total} ${word}`;
+}
 
 function renderProducts(list) {
   const grid = qs('#productGrid');
-  const sorted = [...list].sort((a, b) => {
-    if (a.featured === b.featured) return a.name.localeCompare(b.name);
-    return a.featured ? -1 : 1;
-  });
+  const sorted = sortExecutors(list);
+  renderExecutorResultMeta(sorted.length);
 
   if (!grid.dataset.renderVersion) grid.dataset.renderVersion = '0';
   const nextVersion = String(Number(grid.dataset.renderVersion) + 1);
@@ -711,17 +727,36 @@ function isPriceMatch(prod, priceControls) {
   return false;
 }
 
+function getExecutorSearchHaystack(prod) {
+  return [
+    prod.name,
+    prod.description,
+    prod.cheatType,
+    prod.keySystem,
+    prod.stability,
+    prod.status,
+    ...(prod.platform || []),
+    ...(prod.tags || []),
+    ...(prod.features || []),
+    ...(prod.pricingOptions || [])
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
 function applyAllFilters() {
   const active = getActiveFilters();
   const priceControls = getPriceControls();
-  const searchText = qs('#searchInput').value.trim();
+  const searchTerms = qs('#searchInput').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
   const filtered = products.filter(prod => {
-    if (searchText && !prod.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+    if (searchTerms.length) {
+      const haystack = getExecutorSearchHaystack(prod);
+      if (!searchTerms.every(term => haystack.includes(term))) return false;
+    }
     if (active.platform?.length && !active.platform.some(platform => (prod.platform || []).includes(platform))) return false;
     if (active.tags?.length && !active.tags.every(tag => [...(prod.tags || []), ...(prod.features || [])].includes(tag))) return false;
     if (active.cheatType?.length && !active.cheatType.includes(prod.cheatType)) return false;
     if (active.keySystem?.length && !active.keySystem.includes(prod.keySystem)) return false;
+    if (active.statusState?.length && !active.statusState.includes(getWeaoStatusState(prod.weaoStatus))) return false;
     if (!isPriceMatch(prod, priceControls)) return false;
     return true;
   });
@@ -1381,30 +1416,6 @@ function openSettingsModal() {
   qs('#modalCloseBtn').focus();
 }
 
-function openNoOfficialDiscordModal(scriptName = '') {
-  const overlay = qs('#modalOverlay');
-  const content = qs('#modalContent');
-  if (!overlay || !content) return;
-
-  setCompactModal(true);
-  lastModalTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const safeName = stripTrailingPeriod(scriptName);
-  content.innerHTML = `
-    <section class="discord-unavailable-modal" aria-live="polite">
-      <div class="discord-unavailable-icon" aria-hidden="true">
-        ${popularScriptDiscordSvg}
-        <span>!</span>
-      </div>
-      <h2>No Official Discord</h2>
-      <p class="modal-headline">${safeName ? `<strong>${escapeHtml(safeName)}</strong> does not have an official Discord server.` : escapeHtml(NO_OFFICIAL_DISCORD_MESSAGE)}</p>
-    </section>`;
-
-  overlay.classList.remove('is-closing');
-  overlay.setAttribute('aria-hidden', 'false');
-  qs('#modalCloseBtn').focus();
-}
-
-
 function openNoAiTokensModal(message = NO_ASSISTANT_TOKENS_MESSAGE) {
   const overlay = qs('#modalOverlay');
   const content = qs('#modalContent');
@@ -1470,18 +1481,55 @@ function estimatedPriceValue(product) {
   return Math.min(...numbers);
 }
 
-function computeSmartRanking() {
-  const clampScore = value => Math.max(0, Math.min(100, Math.round(value)));
+const ExecutorScoring = (() => {
+  const clamp = value => Math.max(0, Math.min(100, Math.round(value)));
+  const list = value => (Array.isArray(value) ? value.filter(Boolean).map(String) : []);
+  const has = value => value !== null && value !== undefined && String(value).trim() !== '';
   const mapValue = (value, map) => map[String(value || '').toLowerCase()] ?? null;
-  const trustScoreMap = { trusted: 96, caution: 68, risky: 36, unknown: 52, low: 36 };
-  const stabilityScoreLabelMap = { 'very stable': 100, stable: 92, high: 96, medium: 72, mixed: 62, basic: 48, questionable: 34, low: 46, unstable: 30, unknown: 42 };
-  const normalizeList = value => Array.isArray(value) ? value.filter(Boolean).map(String) : [];
-  const hasValue = value => value !== null && value !== undefined && String(value).trim() !== '';
-  const formatPlatformOrType = product => normalizeList(product.platform).join(', ') || product.cheatType || 'Unknown';
-  const formatScore = score => Number.isFinite(score) ? clampScore(score) : null;
-  const metadataCoverage = product => [
+
+  const trustMap = { high: 96, trusted: 96, medium: 68, caution: 68, low: 36, risky: 36, unknown: 52 };
+  const stabilityMap = { 'very stable': 100, stable: 92, high: 96, medium: 72, mixed: 62, basic: 48, questionable: 34, low: 46, unstable: 30, unknown: 42 };
+
+  const weighted = parts => {
+    const usable = parts.filter(part => part && Number.isFinite(part.value));
+    if (!usable.length) return null;
+    const totalWeight = usable.reduce((sum, part) => sum + part.weight, 0);
+    return clamp(usable.reduce((sum, part) => sum + part.value * part.weight, 0) / totalWeight);
+  };
+
+  const stability = product => mapValue(product.stability, stabilityMap);
+  const sunc = product => (Number.isFinite(product.sunc) ? clamp(product.sunc) : null);
+
+  const safety = product => weighted([
+    { value: mapValue(product.trustLevel, trustMap), weight: 0.52 },
+    { value: stability(product), weight: 0.28 },
+    { value: has(product.status) || has(product.trustLevel) ? (10 - detectionRiskScore(product)) * 10 : null, weight: 0.2 }
+  ]);
+
+  const power = product => weighted([
+    { value: sunc(product), weight: 0.65 },
+    { value: list(product.features).length ? Math.min(100, list(product.features).length * 14) : null, weight: 0.2 },
+    { value: has(product.cheatType) ? (/internal/i.test(product.cheatType) ? 92 : 72) : null, weight: 0.15 }
+  ]);
+
+  const value = product => {
+    const price = estimatedPriceValue(product);
+    const hasPricing = list(product.pricingOptions).length || has(product.freeOrPaid);
+    return weighted([
+      { value: power(product), weight: 0.4 },
+      { value: safety(product), weight: 0.28 },
+      { value: !hasPricing ? null : price <= 0 ? 100 : Math.max(18, 100 - price * 2.4), weight: 0.32 }
+    ]);
+  };
+
+  const overall = product => {
+    const scores = [safety(product), power(product), value(product), stability(product)].filter(Number.isFinite);
+    return scores.length ? clamp(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null;
+  };
+
+  const coverage = product => [
     product.name,
-    normalizeList(product.platform).length ? product.platform : '',
+    list(product.platform).length ? product.platform : '',
     product.cheatType,
     product.keySystem,
     product.freeOrPaid,
@@ -1489,182 +1537,328 @@ function computeSmartRanking() {
     product.trustLevel,
     product.status,
     Number.isFinite(product.sunc) ? product.sunc : '',
-    normalizeList(product.pricingOptions).length ? product.pricingOptions : '',
-    normalizeList(product.tags).length ? product.tags : '',
-    normalizeList(product.pros).length ? product.pros : '',
-    normalizeList(product.cons).length ? product.cons : ''
-  ].filter(hasValue).length;
-  const confidenceLabel = product => {
-    const coverage = metadataCoverage(product);
-    if (coverage >= 10) return 'High';
-    if (coverage >= 7) return 'Medium';
+    list(product.pricingOptions).length ? product.pricingOptions : '',
+    list(product.tags).length ? product.tags : '',
+    list(product.pros).length ? product.pros : '',
+    list(product.cons).length ? product.cons : ''
+  ].filter(has).length;
+
+  const confidence = product => {
+    const score = coverage(product);
+    if (score >= 10) return 'High';
+    if (score >= 7) return 'Medium';
     return 'Low';
   };
-  const reasonList = (...items) => items.filter(Boolean).slice(0, 3);
 
-  const safetyScore = product => {
-    const trust = mapValue(product.trustLevel, trustScoreMap);
-    const stability = mapValue(product.stability, stabilityScoreLabelMap);
-    const risk = hasValue(product.status) || hasValue(product.trustLevel) ? (10 - detectionRiskScore(product)) * 10 : null;
-    const parts = [
-      trust === null ? null : { value: trust, weight: 0.52 },
-      stability === null ? null : { value: stability, weight: 0.28 },
-      risk === null ? null : { value: risk, weight: 0.2 }
-    ].filter(Boolean);
-    if (!parts.length) return null;
-    const weight = parts.reduce((sum, part) => sum + part.weight, 0);
-    return clampScore(parts.reduce((sum, part) => sum + (part.value * part.weight), 0) / weight);
-  };
-  const stabilityScore = product => mapValue(product.stability, stabilityScoreLabelMap);
-  const suncScore = product => Number.isFinite(product.sunc) ? clampScore(product.sunc) : null;
-  const powerScore = product => {
-    const sunc = suncScore(product);
-    const features = normalizeList(product.features).length ? Math.min(100, normalizeList(product.features).length * 14) : null;
-    const type = hasValue(product.cheatType) ? (String(product.cheatType).toLowerCase() === 'internal' ? 92 : 72) : null;
-    const parts = [
-      sunc === null ? null : { value: sunc, weight: 0.65 },
-      features === null ? null : { value: features, weight: 0.2 },
-      type === null ? null : { value: type, weight: 0.15 }
-    ].filter(Boolean);
-    if (!parts.length) return null;
-    const weight = parts.reduce((sum, part) => sum + part.weight, 0);
-    return clampScore(parts.reduce((sum, part) => sum + (part.value * part.weight), 0) / weight);
-  };
-  const valueScore = product => {
-    const safety = safetyScore(product);
-    const power = powerScore(product);
-    const price = estimatedPriceValue(product);
-    const hasPricing = normalizeList(product.pricingOptions).length || hasValue(product.freeOrPaid);
-    const normalizedPrice = !hasPricing ? null : price <= 0 ? 100 : Math.max(18, 100 - (price * 2.4));
-    const parts = [
-      power === null ? null : { value: power, weight: 0.4 },
-      safety === null ? null : { value: safety, weight: 0.28 },
-      normalizedPrice === null ? null : { value: normalizedPrice, weight: 0.32 }
-    ].filter(Boolean);
-    if (!parts.length) return null;
-    const weight = parts.reduce((sum, part) => sum + part.weight, 0);
-    return clampScore(parts.reduce((sum, part) => sum + (part.value * part.weight), 0) / weight);
-  };
-  const overallScore = product => {
-    const scores = [safetyScore(product), powerScore(product), valueScore(product), stabilityScore(product)].filter(Number.isFinite);
-    return scores.length ? clampScore(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null;
-  };
-  const riskScoreForRanking = product => hasValue(product.status) || hasValue(product.trustLevel) ? detectionRiskScore(product) : null;
+  const risk = product => (has(product.status) || has(product.trustLevel) ? detectionRiskScore(product) : null);
 
-  const buildEntry = (id, title, product, score, why) => ({
-    id,
-    title,
-    executor: product || null,
-    score: formatScore(score),
-    riskLevel: product && (hasValue(product.status) || hasValue(product.trustLevel)) ? detectionRiskLabel(product) : 'Unknown',
-    platformOrType: product ? formatPlatformOrType(product) : 'Unknown',
-    confidence: product ? confidenceLabel(product) : 'Low',
-    why: why && why.length ? why : ['Unknown']
+  return Object.freeze({ clamp, list, has, safety, power, value, stability, sunc, overall, coverage, confidence, risk });
+})();
+
+function getExecutorSignals(product) {
+  const signals = [];
+  if (Number.isFinite(product.sunc)) signals.push(`sUNC ${product.sunc}%`);
+  if (ExecutorScoring.has(product.trustLevel) && product.trustLevel !== 'Unknown') signals.push(`${product.trustLevel} trust`);
+  if (ExecutorScoring.has(product.stability) && product.stability !== 'Unknown') signals.push(product.stability);
+
+  const liveStatus = getWeaoStatusLabel(product.weaoStatus);
+  if (liveStatus !== 'Unknown') signals.push(`Live: ${liveStatus}`);
+  else if (ExecutorScoring.has(product.status) && product.status !== 'Unknown') signals.push(product.status);
+
+  if (/keyless/i.test(product.keySystem || '')) signals.push('Keyless');
+  if (product.freeOrPaid === 'free') signals.push('Free');
+  else if (product.freeOrPaid === 'both') signals.push('Free tier');
+
+  const features = ExecutorScoring.list(product.features);
+  if (features.length) signals.push(`${features.length} feature${features.length === 1 ? '' : 's'}`);
+
+  return signals;
+}
+
+const SMART_RANKING_SCOPES = [
+  { id: 'all', label: 'All platforms', match: () => true },
+  { id: 'windows', label: 'Windows', match: product => (product.platform || []).some(item => /windows/i.test(item)) },
+  { id: 'mobile', label: 'Mobile', match: product => (product.platform || []).some(item => /android|ios/i.test(item)) },
+  { id: 'macos', label: 'macOS', match: product => (product.platform || []).some(item => /mac/i.test(item)) }
+];
+
+const SMART_RANKING_CATEGORIES = [
+  {
+    id: 'bestOverall',
+    title: 'Best Overall',
+    blurb: 'Averaged across safety, capability, value, and stability',
+    filter: () => true,
+    score: product => ExecutorScoring.overall(product)
+  },
+  {
+    id: 'safest',
+    title: 'Safest Right Now',
+    blurb: 'Weighted toward trust level, then stability and detection risk',
+    filter: () => true,
+    score: product => ExecutorScoring.safety(product)
+  },
+  {
+    id: 'bestFree',
+    title: 'Best Free Option',
+    blurb: 'Best capability-per-cost among executors with a free tier',
+    filter: product => ['free', 'both'].includes(String(product.freeOrPaid || '').toLowerCase()),
+    score: product => ExecutorScoring.value(product)
+  },
+  {
+    id: 'bestPaid',
+    title: 'Best Paid Pick',
+    blurb: 'Highest overall score among executors with no free tier',
+    filter: product => String(product.freeOrPaid || '').toLowerCase() === 'paid',
+    score: product => ExecutorScoring.overall(product)
+  },
+  {
+    id: 'bestKeyless',
+    title: 'Best Keyless',
+    blurb: 'Top overall score among executors with no key system',
+    filter: product => /keyless/i.test(product.keySystem || ''),
+    score: product => ExecutorScoring.overall(product)
+  },
+  {
+    id: 'mostStable',
+    title: 'Most Stable',
+    blurb: 'Ranked purely on the listed stability rating',
+    filter: product => Number.isFinite(ExecutorScoring.stability(product)),
+    score: product => ExecutorScoring.stability(product)
+  },
+  {
+    id: 'mostPowerful',
+    title: 'Most Powerful',
+    blurb: 'Weighted toward sUNC coverage, then features and execution type',
+    filter: product => Number.isFinite(ExecutorScoring.power(product)),
+    score: product => ExecutorScoring.power(product)
+  },
+  {
+    id: 'highestRisk',
+    title: 'Highest Risk',
+    blurb: 'Listed here so you can avoid them, not pick them',
+    filter: product => Number.isFinite(ExecutorScoring.risk(product)),
+    score: product => ExecutorScoring.risk(product) * 10,
+    invertScoreLabel: true
+  }
+];
+
+const SMART_RANKING_SCOPE_KEY = 'xyrex_ranking_scope';
+let smartRankingScope = 'all';
+
+function computeSmartRanking() {
+  const scope = SMART_RANKING_SCOPES.find(item => item.id === smartRankingScope) || SMART_RANKING_SCOPES[0];
+  const pool = products.filter(scope.match);
+
+  const categories = SMART_RANKING_CATEGORIES.map(category => {
+    const ranked = pool
+      .filter(category.filter)
+      .map(product => ({ product, score: category.score(product) }))
+      .filter(item => Number.isFinite(item.score))
+      .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name))
+      .slice(0, 3);
+
+    return {
+      id: category.id,
+      title: category.title,
+      blurb: category.blurb,
+      invertScoreLabel: Boolean(category.invertScoreLabel),
+      entries: ranked.map(item => ({
+        product: item.product,
+        score: ExecutorScoring.clamp(item.score),
+        confidence: ExecutorScoring.confidence(item.product),
+        signals: getExecutorSignals(item.product),
+        breakdown: {
+          Safety: ExecutorScoring.safety(item.product),
+          Power: ExecutorScoring.power(item.product),
+          Value: ExecutorScoring.value(item.product)
+        }
+      }))
+    };
   });
 
-  const pickTop = (id, title, filterFn, scoreFn, whyBuilder) => {
-    const scored = products
-      .filter(filterFn)
-      .map(product => ({ product, score: scoreFn(product) }))
-      .filter(item => Number.isFinite(item.score))
-      .sort((a, b) => b.score - a.score);
-    const winner = scored[0];
-    if (!winner) return buildEntry(id, title, null, null, ['Unknown']);
-    return buildEntry(id, title, winner.product, winner.score, whyBuilder(winner.product));
-  };
+  const leaderboard = pool
+    .map(product => ({ product, score: ExecutorScoring.overall(product) }))
+    .filter(item => Number.isFinite(item.score))
+    .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name))
+    .slice(0, 10);
 
-  const isFree = product => ['free', 'both'].includes(String(product.freeOrPaid || '').toLowerCase());
-  const isKeyless = product => String(product.keySystem || '').toLowerCase() === 'keyless';
-  const isTrending = product => normalizeList(product.tags).some(tag => tag.toLowerCase() === 'trending');
-
-  const categories = [
-    pickTop('bestOverall', 'Best Overall', () => true, overallScore, p => reasonList(
-      'balanced safety, stability, value, and capability metadata',
-      p.stability ? `listed stability: ${p.stability}` : '',
-      Number.isFinite(p.sunc) ? `sUNC metadata: ${p.sunc}` : ''
-    )),
-    pickTop('safest', 'Safest Right Now', () => true, safetyScore, p => reasonList(
-      p.trustLevel ? `trust level: ${p.trustLevel}` : '',
-      p.status ? `status: ${p.status}` : '',
-      p.stability ? `stability: ${p.stability}` : ''
-    )),
-    pickTop('bestFree', 'Best Free Option', isFree, valueScore, p => reasonList(
-      'free option available',
-      p.stability ? `stability: ${p.stability}` : '',
-      normalizeList(p.pricingOptions).length ? `pricing metadata: ${normalizeList(p.pricingOptions).join(', ')}` : ''
-    )),
-    pickTop('bestKeyless', 'Best Keyless', isKeyless, overallScore, p => reasonList(
-      'keyless access listed',
-      p.stability ? `stability: ${p.stability}` : '',
-      p.trustLevel ? `trust level: ${p.trustLevel}` : ''
-    )),
-    pickTop('mostStable', 'Most Stable', product => Number.isFinite(stabilityScore(product)), stabilityScore, p => reasonList(
-      p.stability ? `listed stability: ${p.stability}` : '',
-      p.status ? `status: ${p.status}` : '',
-      p.trustLevel ? `trust level: ${p.trustLevel}` : ''
-    )),
-    pickTop('highestSunc', 'Highest sUNC', product => Number.isFinite(product.sunc), suncScore, p => reasonList(
-      Number.isFinite(p.sunc) ? `sUNC metadata: ${p.sunc}` : '',
-      p.cheatType ? `type: ${p.cheatType}` : '',
-      normalizeList(p.features).length ? `features listed: ${normalizeList(p.features).join(', ')}` : ''
-    )),
-    pickTop('trendingRisky', 'Trending but Risky', product => isTrending(product) && Number.isFinite(riskScoreForRanking(product)), product => riskScoreForRanking(product) * 10, p => reasonList(
-      'trending tag listed',
-      p.trustLevel ? `trust level: ${p.trustLevel}` : '',
-      p.status ? `status: ${p.status}` : ''
-    ))
-  ];
+  const winCounts = new Map();
+  categories.forEach(category => {
+    const winner = category.entries[0];
+    if (!winner || category.invertScoreLabel) return;
+    winCounts.set(winner.product.name, (winCounts.get(winner.product.name) || 0) + 1);
+  });
+  const scoredCategoryCount = categories.filter(category => !category.invertScoreLabel && category.entries.length).length;
+  const [dominantName, dominantWins] = [...winCounts.entries()].sort((a, b) => b[1] - a[1])[0] || [];
 
   return {
-    monthLabel: new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
-    categories
+    scopeLabel: scope.label,
+    poolSize: pool.length,
+    categories,
+    leaderboard,
+    dominance: dominantWins >= 3 ? { name: dominantName, wins: dominantWins, total: scoredCategoryCount } : null
   };
+}
+
+function renderRankingLeaderboard(leaderboard) {
+  if (!leaderboard.length) return '';
+  return `
+    <section class="ranking-leaderboard" aria-label="Overall executor leaderboard">
+      <div class="ranking-leaderboard-head">
+        <h4>Overall leaderboard</h4>
+        <span>Top ${leaderboard.length} by combined safety, capability, value, and stability</span>
+      </div>
+      <ol class="ranking-leaderboard-list">
+        ${leaderboard.map((entry, index) => `
+          <li>
+            <button type="button" data-ranking-executor="${escapeHtml(entry.product.name)}">
+              <span class="ranking-leaderboard-rank">${index + 1}</span>
+              <span class="ranking-leaderboard-name">${escapeHtml(entry.product.name)}</span>
+              <span class="ranking-leaderboard-signals">${getExecutorSignals(entry.product).slice(0, 3).map(signal => `<span>${escapeHtml(signal)}</span>`).join('')}</span>
+              <span class="ranking-leaderboard-track"><span style="width:${entry.score}%"></span></span>
+              <strong>${entry.score}</strong>
+            </button>
+          </li>`).join('')}
+      </ol>
+    </section>`;
+}
+
+function renderSmartRankingCard(category) {
+  if (!category.entries.length) {
+    return `
+      <article class="smart-ranking-card is-empty">
+        <div class="smart-ranking-card-top"><span class="smart-ranking-card-title">${escapeHtml(category.title)}</span></div>
+        <p class="smart-ranking-blurb">${escapeHtml(category.blurb)}</p>
+        <p class="smart-ranking-empty">No listed executor has the data needed for this ranking in the current scope</p>
+      </article>`;
+  }
+
+  const [winner, ...runnersUp] = category.entries;
+  const scoreLabel = category.invertScoreLabel ? 'Risk' : 'Score';
+  const scoreValue = category.invertScoreLabel ? `${Math.round(winner.score / 10)}/10` : `${winner.score}/100`;
+  const bars = Object.entries(winner.breakdown)
+    .filter(([, value]) => Number.isFinite(value))
+    .map(([label, value]) => `
+      <div class="smart-ranking-bar">
+        <span>${escapeHtml(label)}</span>
+        <span class="smart-ranking-bar-track"><span class="smart-ranking-bar-fill" style="width:${value}%"></span></span>
+        <strong>${value}</strong>
+      </div>`).join('');
+
+  return `
+    <article class="smart-ranking-card${category.invertScoreLabel ? ' is-caution' : ''}">
+      <div class="smart-ranking-card-top">
+        <span class="smart-ranking-card-title">${escapeHtml(category.title)}</span>
+        <span class="smart-ranking-confidence">${escapeHtml(winner.confidence)} confidence</span>
+      </div>
+      <p class="smart-ranking-blurb">${escapeHtml(category.blurb)}</p>
+
+      <button class="smart-ranking-winner" type="button" data-ranking-executor="${escapeHtml(winner.product.name)}">
+        <span class="smart-ranking-rank">1</span>
+        <span class="smart-ranking-executor">${escapeHtml(winner.product.name)}</span>
+        <span class="smart-ranking-score"><small>${escapeHtml(scoreLabel)}</small>${escapeHtml(scoreValue)}</span>
+      </button>
+
+      ${winner.signals.length ? `<div class="smart-ranking-signals">${winner.signals.map(signal => `<span>${escapeHtml(signal)}</span>`).join('')}</div>` : ''}
+      ${bars ? `<div class="smart-ranking-bars">${bars}</div>` : ''}
+
+      ${runnersUp.length ? `
+        <div class="smart-ranking-runners">
+          <span class="smart-ranking-runners-label">Runners-up</span>
+          ${runnersUp.map((entry, index) => `
+            <button class="smart-ranking-runner" type="button" data-ranking-executor="${escapeHtml(entry.product.name)}">
+              <span class="smart-ranking-rank">${index + 2}</span>
+              <span>${escapeHtml(entry.product.name)}</span>
+              <strong>${category.invertScoreLabel ? `${Math.round(entry.score / 10)}/10` : entry.score}</strong>
+            </button>`).join('')}
+        </div>` : ''}
+    </article>`;
 }
 
 function renderSmartRankings() {
   const wrap = qs('#smartRankingSections');
   if (!wrap) return;
   const ranking = computeSmartRanking();
-  if (!ranking.categories.length) {
-    wrap.innerHTML = '';
-    return;
-  }
 
   wrap.innerHTML = `
     <div class="smart-ranking-dashboard" aria-label="Smart rankings dashboard">
       <div class="smart-ranking-dashboard-head">
-        <p class="smart-ranking-kicker">Updated for ${escapeHtml(ranking.monthLabel)}</p>
-        <p class="smart-ranking-intro">Concise rankings generated from the executor metadata already listed on this page. Missing fields stay marked as Unknown.</p>
+        <p class="smart-ranking-intro">Rankings are recomputed from the executor metadata on this site every time the page loads. Executors missing a field are left out of the rankings that need it rather than guessed at.</p>
+        <div class="smart-ranking-scopes" role="group" aria-label="Ranking platform scope">
+          ${SMART_RANKING_SCOPES.map(scope => `<button class="script-filter-chip ${scope.id === smartRankingScope ? 'is-active' : ''}" type="button" data-ranking-scope="${scope.id}" aria-pressed="${scope.id === smartRankingScope}">${escapeHtml(scope.label)}</button>`).join('')}
+        </div>
+        <p class="smart-ranking-kicker">Scored across ${ranking.poolSize} executor${ranking.poolSize === 1 ? '' : 's'} matching ${escapeHtml(ranking.scopeLabel)}</p>
+        ${ranking.dominance ? `<p class="smart-ranking-dominance">${escapeHtml(ranking.dominance.name)} currently tops ${ranking.dominance.wins} of the ${ranking.dominance.total} scored categories below, so the runners-up are where the alternatives are</p>` : ''}
       </div>
+      ${renderRankingLeaderboard(ranking.leaderboard)}
       <div class="smart-ranking-grid">
-        ${ranking.categories.map(entry => `
-          <article class="smart-ranking-card">
-            <div class="smart-ranking-card-top">
-              <span class="smart-ranking-card-title">${escapeHtml(entry.title)}</span>
-              <span class="smart-ranking-confidence">${escapeHtml(entry.confidence || 'Unknown')}</span>
-            </div>
-            <strong class="smart-ranking-executor">${escapeHtml(entry.executor?.name || 'Unknown')}</strong>
-            <div class="smart-ranking-metrics">
-              <div><span>Score</span><strong>${entry.score === null ? 'Unknown' : `${escapeHtml(String(entry.score))}/100`}</strong></div>
-              <div><span>Risk</span><strong>${escapeHtml(entry.riskLevel || 'Unknown')}</strong></div>
-              <div><span>Platform / Type</span><strong>${escapeHtml(entry.platformOrType || 'Unknown')}</strong></div>
-            </div>
-            <div class="smart-ranking-why">
-              <span>Why ranked here</span>
-              <ul>
-                ${entry.why.map(reason => `<li>${escapeHtml(reason || 'Unknown')}</li>`).join('')}
-              </ul>
-            </div>
-          </article>
-        `).join('')}
+        ${ranking.categories.map(renderSmartRankingCard).join('')}
       </div>
-    </div>
-  `;
+    </div>`;
+
+  if (wrap.dataset.rankingsBound === 'true') return;
+  wrap.addEventListener('click', event => {
+    const scopeButton = event.target.closest('[data-ranking-scope]');
+    if (scopeButton) {
+      smartRankingScope = scopeButton.getAttribute('data-ranking-scope') || 'all';
+      localStorage.setItem(SMART_RANKING_SCOPE_KEY, smartRankingScope);
+      renderSmartRankings();
+      return;
+    }
+    const executorButton = event.target.closest('[data-ranking-executor]');
+    if (!executorButton) return;
+    const product = products.find(item => item.name === executorButton.getAttribute('data-ranking-executor'));
+    if (product) openModal(product);
+  });
+  wrap.dataset.rankingsBound = 'true';
 }
 
 let comparisonSelection = [];
 let comparisonSearchTerm = '';
 let comparisonFilter = 'all';
+let comparisonShowAllRows = false;
+
+const COMPARISON_MAX = 3;
+
+function getComparisonRows(selectedProducts) {
+  const stabilityValues = selectedProducts.map(item => stabilityScoreMap[item.stability] || 0);
+  const riskValues = selectedProducts.map(item => detectionRiskScore(item));
+  const priceValues = selectedProducts.map(item => estimatedPriceValue(item));
+
+  return [
+    {
+      label: 'Overall score',
+      values: selectedProducts.map(item => ExecutorScoring.overall(item) ?? -1),
+      display: selectedProducts.map(item => { const score = ExecutorScoring.overall(item); return Number.isFinite(score) ? `${score}/100` : 'Unknown'; }),
+      best: 'max'
+    },
+    {
+      label: 'Live status',
+      values: selectedProducts.map(item => (getWeaoStatusState(item.weaoStatus) === 'up' ? 1 : 0)),
+      display: selectedProducts.map(item => getWeaoStatusLabel(item.weaoStatus)),
+      best: null
+    },
+    { label: 'sUNC', values: selectedProducts.map(item => (Number.isFinite(item.sunc) ? item.sunc : -1)), display: selectedProducts.map(item => (Number.isFinite(item.sunc) ? `${item.sunc}%` : 'None')), best: 'max' },
+    { label: 'Stability', values: stabilityValues, display: selectedProducts.map(item => item.stability || 'Unknown'), best: 'max' },
+    { label: 'Detection Risk', values: riskValues, display: selectedProducts.map((item, index) => `${detectionRiskLabel(item)} (${riskValues[index]}/10)`), best: 'min' },
+    { label: 'Price', values: priceValues, display: selectedProducts.map(item => cleanMalformedPriceText(item.pricingOptions?.[0] || item.freeOrPaid || 'Unknown')), best: 'min' },
+    { label: 'Platform', values: selectedProducts.map(item => (item.platform || []).length), display: selectedProducts.map(item => (item.platform || []).join(', ') || 'Unknown'), best: 'max' },
+    { label: 'Key System', values: selectedProducts.map(item => (/keyless/i.test(item.keySystem || '') ? 1 : 0)), display: selectedProducts.map(item => item.keySystem || 'Unknown'), best: 'max' },
+    { label: 'Cheat Type', values: selectedProducts.map(item => (/internal/i.test(item.cheatType || '') ? 1 : 0)), display: selectedProducts.map(item => item.cheatType || 'Unknown'), best: null },
+    { label: 'Listed Status', values: selectedProducts.map(item => (/undetected|working/i.test(item.status || '') ? 1 : 0)), display: selectedProducts.map(item => item.status || 'Unknown'), best: null },
+    { label: 'Trust Level', values: selectedProducts.map(item => ({ high: 3, trusted: 3, medium: 2, caution: 2, low: 0, risky: 0 }[String(item.trustLevel || '').toLowerCase()] ?? 1)), display: selectedProducts.map(item => item.trustLevel || 'Unknown'), best: 'max' },
+    { label: 'Features', values: selectedProducts.map(item => (item.features || []).length), display: selectedProducts.map(item => (item.features || []).join(', ') || 'None listed'), best: 'max' },
+    { label: 'Pros', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.pros || []).slice(0, 3).join(', ') || 'None listed'), best: null },
+    { label: 'Cons', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.cons || []).slice(0, 3).join(', ') || 'None listed'), best: null }
+  ];
+}
+
+function buildComparisonMarkdown(selectedProducts, rows) {
+  const header = `| Metric | ${selectedProducts.map(item => item.name).join(' | ')} |`;
+  const divider = `| --- | ${selectedProducts.map(() => '---').join(' | ')} |`;
+  const body = rows.map(row => `| ${row.label} | ${row.display.join(' | ')} |`).join('\n');
+  return `Xyrex executor comparison\n\n${header}\n${divider}\n${body}\n\nCompare these yourself: ${window.location.origin}/scripthub?compare=${encodeURIComponent(selectedProducts.map(item => item.name).join(','))}`;
+}
 
 function renderComparisonSystem() {
   const selector = qs('#comparisonSelector');
@@ -1712,11 +1906,16 @@ function renderComparisonSystem() {
     if (comparisonFilter === 'highsunc') return Number.isFinite(product.sunc) && product.sunc >= 90;
     return true;
   };
+
+  const isFull = comparisonSelection.length >= COMPARISON_MAX;
   const sorted = [...products].filter(filterMatch).sort((a, b) => a.name.localeCompare(b.name));
-  selector.innerHTML = sorted.map(product => {
-    const selected = comparisonSelection.includes(product.name);
-    return `<button type="button" class="compare-pick ${selected ? 'is-active' : ''}" data-compare-name="${escapeHtml(product.name)}">${escapeHtml(product.name)}</button>`;
-  }).join('');
+  selector.innerHTML = sorted.length
+    ? sorted.map(product => {
+      const selected = comparisonSelection.includes(product.name);
+      const sunc = Number.isFinite(product.sunc) ? `<span class="compare-pick-sunc">${product.sunc}%</span>` : '';
+      return `<button type="button" class="compare-pick ${selected ? 'is-active' : ''}" data-compare-name="${escapeHtml(product.name)}" aria-pressed="${selected}"${!selected && isFull ? ' disabled' : ''}>${escapeHtml(product.name)}${sunc}</button>`;
+    }).join('')
+    : '<p class="comparison-selector-empty">No executors match that search or filter</p>';
 
   selector.querySelectorAll('[data-compare-name]').forEach(button => {
     button.addEventListener('click', () => {
@@ -1724,18 +1923,33 @@ function renderComparisonSystem() {
       if (!name) return;
       if (comparisonSelection.includes(name)) {
         comparisonSelection = comparisonSelection.filter(item => item !== name);
-      } else if (comparisonSelection.length < 3) {
+      } else if (comparisonSelection.length < COMPARISON_MAX) {
         comparisonSelection = [...comparisonSelection, name];
       }
       renderComparisonSystem();
     });
   });
-  selectedRow.innerHTML = comparisonSelection.length ? `Selected: ${comparisonSelection.map(name => `${escapeHtml(name)} ×`).join(' ').replace(/ ×$/, '')}` : 'Selected: None';
+
+  const slotText = `${comparisonSelection.length} of ${COMPARISON_MAX} selected`;
+  selectedRow.innerHTML = comparisonSelection.length
+    ? `<span class="comparison-selected-label">${escapeHtml(slotText)}</span>${comparisonSelection.map(name => `<button class="comparison-selected-chip" type="button" data-compare-remove="${escapeHtml(name)}" title="Remove ${escapeHtml(name)}">${escapeHtml(name)}<span aria-hidden="true">✕</span></button>`).join('')}<button class="comparison-clear-btn" type="button" data-compare-clear="true">Clear all</button>`
+    : '<span class="comparison-selected-label">Pick 2 or 3 executors below to compare them</span>';
+
+  selectedRow.querySelectorAll('[data-compare-remove]').forEach(button => {
+    button.addEventListener('click', () => {
+      comparisonSelection = comparisonSelection.filter(item => item !== button.getAttribute('data-compare-remove'));
+      renderComparisonSystem();
+    });
+  });
+  selectedRow.querySelector('[data-compare-clear]')?.addEventListener('click', () => {
+    comparisonSelection = [];
+    renderComparisonSystem();
+  });
 
   const selectedProducts = comparisonSelection
     .map(name => products.find(item => item.name === name))
     .filter(Boolean)
-    .slice(0, 3);
+    .slice(0, COMPARISON_MAX);
 
   if (selectedProducts.length < 2) {
     tableWrap.hidden = true;
@@ -1747,11 +1961,10 @@ function renderComparisonSystem() {
     return;
   }
 
-  const suncValues = selectedProducts.map(item => Number.isFinite(item.sunc) ? item.sunc : -1);
-  const stabilityValues = selectedProducts.map(item => stabilityScoreMap[item.stability] || 0);
-  const riskValues = selectedProducts.map(item => detectionRiskScore(item));
-  const priceValues = selectedProducts.map(item => estimatedPriceValue(item));
-  const platformValues = selectedProducts.map(item => (item.platform || []).length);
+  const allRows = getComparisonRows(selectedProducts);
+  const isUninformative = row => row.display.every(value => /^(unknown|none|none listed)$/i.test(String(value).trim()));
+  const hiddenRows = allRows.filter(isUninformative);
+  const rows = comparisonShowAllRows ? allRows : allRows.filter(row => !isUninformative(row));
 
   const winnerIndexes = values => {
     const valid = values.filter(Number.isFinite);
@@ -1767,22 +1980,13 @@ function renderComparisonSystem() {
   };
 
   const cell = (value, best) => `<td class="${best ? 'is-best' : ''}">${escapeHtml(String(value))}${best ? '<span class="best-label">Best</span>' : ''}</td>`;
-  const rows = [
-    { label: 'sUNC', values: selectedProducts.map(item => Number.isFinite(item.sunc) ? item.sunc : -1), display: selectedProducts.map(item => Number.isFinite(item.sunc) ? `${item.sunc}%` : 'None'), best: 'max' },
-    { label: 'Stability', values: stabilityValues, display: selectedProducts.map(item => item.stability), best: 'max' },
-    { label: 'Detection Risk', values: riskValues, display: selectedProducts.map((item, idx) => `${detectionRiskLabel(item)} (${riskValues[idx]}/10)`), best: 'min' },
-    { label: 'Price', values: priceValues, display: selectedProducts.map(item => item.pricingOptions?.[0] || item.freeOrPaid), best: 'min' },
-    { label: 'Platform', values: platformValues, display: selectedProducts.map(item => (item.platform || []).join(', ')), best: 'max' },
-    { label: 'Key System', values: selectedProducts.map(item => String(item.keySystem || '').toLowerCase() === 'key' ? 0 : 1), display: selectedProducts.map(item => item.keySystem || 'Unknown'), best: 'max' },
-    { label: 'Cheat Type', values: selectedProducts.map(item => item.cheatType === 'internal' ? 1 : 0), display: selectedProducts.map(item => item.cheatType || 'Unknown'), best: null },
-    { label: 'Status', values: selectedProducts.map(item => String(item.status || '').toLowerCase().includes('up') ? 1 : 0), display: selectedProducts.map(item => item.status || 'Unknown'), best: null },
-    { label: 'Trust Level', values: selectedProducts.map(item => ({ trusted: 3, caution: 2, unknown: 1, risky: 0 }[String(item.trustLevel || '').toLowerCase()] ?? 1)), display: selectedProducts.map(item => item.trustLevel || 'Unknown'), best: 'max' },
-    { label: 'Features', values: selectedProducts.map(item => (item.features || []).length), display: selectedProducts.map(item => (item.features || []).join(', ') || 'None listed'), best: 'max' },
-    { label: 'Pros', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.pros || []).slice(0, 3).join(', ') || 'None listed'), best: null },
-    { label: 'Cons', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.cons || []).slice(0, 3).join(', ') || 'None listed'), best: null },
-    { label: 'Best For', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => item.tags?.[0] || 'General use'), best: null },
-    { label: 'Avoid If', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.cons || [])[0] || 'You need maximum trust certainty'), best: null }
-  ];
+  const winsPerProduct = selectedProducts.map(() => 0);
+
+  const bodyRows = rows.map(row => {
+    const winners = row.best === 'max' ? winnerIndexes(row.values) : row.best === 'min' ? winnerIndexesMin(row.values) : [];
+    winners.forEach(index => { winsPerProduct[index] += 1; });
+    return `<tr><th>${escapeHtml(row.label)}</th>${row.display.map((value, index) => cell(value, winners.includes(index))).join('')}</tr>`;
+  }).join('');
 
   table.innerHTML = `
     <thead>
@@ -1791,90 +1995,176 @@ function renderComparisonSystem() {
         ${selectedProducts.map(item => `<th>${escapeHtml(item.name)}</th>`).join('')}
       </tr>
     </thead>
-    <tbody>
-      ${rows.map(row => {
-        const winners = row.best === 'max' ? winnerIndexes(row.values) : row.best === 'min' ? winnerIndexesMin(row.values) : [];
-        return `<tr><th>${escapeHtml(row.label)}</th>${row.display.map((value, idx) => cell(value, winners.includes(idx))).join('')}</tr>`;
-      }).join('')}
-    </tbody>
-  `;
-  const recommendationTotals = selectedProducts.map(item => (Number.isFinite(item.sunc) ? item.sunc : 55) + (stabilityScoreMap[item.stability] || 0) + (100 - (detectionRiskScore(item) * 10)));
-  const leadIndex = recommendationTotals.findIndex(score => score === Math.max(...recommendationTotals));
+    <tbody>${bodyRows}</tbody>`;
+
+  const overallScores = selectedProducts.map(item => ExecutorScoring.overall(item));
+  const scored = overallScores.filter(Number.isFinite);
+  const leadIndex = scored.length
+    ? overallScores.indexOf(Math.max(...scored))
+    : winsPerProduct.indexOf(Math.max(...winsPerProduct));
+  const leader = selectedProducts[leadIndex];
+  const leaderScore = overallScores[leadIndex];
+  const isTie = scored.length > 1 && scored.filter(score => score === Math.max(...scored)).length > 1;
+
   winnerSummary.hidden = false;
-  winnerSummary.innerHTML = `<strong>Winner summary:</strong> ${escapeHtml(selectedProducts[leadIndex].name)} currently leads overall for this selection mix.`;
+  winnerSummary.innerHTML = `
+    <div class="comparison-winner-main">
+      <strong>${isTie ? 'Too close to call' : `${escapeHtml(leader.name)} leads this comparison`}</strong>
+      <span>${isTie
+        ? 'These executors score the same overall on the data listed here'
+        : `Overall score ${Number.isFinite(leaderScore) ? `${leaderScore}/100` : 'unavailable'}, winning ${winsPerProduct[leadIndex]} of ${rows.filter(row => row.best).length} scored metrics`}</span>
+    </div>
+    <div class="comparison-winner-actions">
+      ${hiddenRows.length ? `<button class="btn-ghost-outline" type="button" data-compare-toggle-rows="true">${comparisonShowAllRows ? 'Hide' : 'Show'} ${hiddenRows.length} unknown-only row${hiddenRows.length === 1 ? '' : 's'}</button>` : ''}
+      <button class="btn-ghost-outline" type="button" data-compare-copy="true">Copy comparison</button>
+      <button class="btn-ghost-outline" type="button" data-compare-link="true">Copy link</button>
+    </div>`;
+
+  winnerSummary.querySelector('[data-compare-toggle-rows]')?.addEventListener('click', () => {
+    comparisonShowAllRows = !comparisonShowAllRows;
+    renderComparisonSystem();
+  });
+  winnerSummary.querySelector('[data-compare-copy]')?.addEventListener('click', async () => {
+    const copied = await copyTextToClipboard(buildComparisonMarkdown(selectedProducts, allRows));
+    showToast(copied ? 'Comparison copied as a table' : 'Could not copy the comparison', copied ? 'positive' : 'warning');
+  });
+  winnerSummary.querySelector('[data-compare-link]')?.addEventListener('click', async () => {
+    const link = `${window.location.origin}/scripthub?compare=${encodeURIComponent(selectedProducts.map(item => item.name).join(','))}`;
+    const copied = await copyTextToClipboard(link);
+    showToast(copied ? 'Comparison link copied' : 'Could not copy the link', copied ? 'positive' : 'warning');
+  });
+
   verdictsWrap.hidden = false;
-  verdictsWrap.innerHTML = selectedProducts.map(item => `<article class="comparison-verdict-card"><h4>${escapeHtml(item.name)}</h4><p><strong>Verdict:</strong> ${escapeHtml((item.pros || [])[0] || 'Solid overall baseline.')}</p><p><strong>Watch-out:</strong> ${escapeHtml((item.cons || [])[0] || 'Review status and trust before use.')}</p></article>`).join('');
+  verdictsWrap.innerHTML = selectedProducts.map((item, index) => {
+    const signals = getExecutorSignals(item);
+    const strengths = rows.filter(row => {
+      const winners = row.best === 'max' ? winnerIndexes(row.values) : row.best === 'min' ? winnerIndexesMin(row.values) : [];
+      return winners.includes(index);
+    }).map(row => row.label);
+    return `
+      <article class="comparison-verdict-card">
+        <h4>${escapeHtml(item.name)}</h4>
+        ${signals.length ? `<div class="smart-ranking-signals">${signals.map(signal => `<span>${escapeHtml(signal)}</span>`).join('')}</div>` : ''}
+        <p><strong>Wins on:</strong> ${strengths.length ? escapeHtml(strengths.join(', ')) : 'No metric outright, it ties or trails on every scored row'}</p>
+        <p><strong>Watch-out:</strong> ${escapeHtml((item.cons || [])[0] || 'Review status and trust before use')}</p>
+      </article>`;
+  }).join('');
 
   tableWrap.hidden = false;
 }
 
-function renderPopularScripts() {
-  const wrap = qs('#popularScriptsList');
-  if (!wrap) return;
-  const scripts = Array.isArray(scriptsHubData.popularScripts) ? scriptsHubData.popularScripts : [];
-  const groupedScripts = groupScriptsByCategory(scripts);
-  const categories = getPopularScriptCategories(groupedScripts);
-  if (!categories.length) {
-    wrap.innerHTML = '<div class="script-empty-state"><p>No scripts found</p><p>Try a different search or category</p></div>';
-    return;
-  }
-  const defaultOpenCategory = null;
-  wrap.classList.add('popular-script-categories');
-  wrap.innerHTML = categories.map((categoryName, index) => {
-    const items = groupedScripts[categoryName] || [];
-    const isOpen = categoryName === defaultOpenCategory;
-    return renderScriptCategory(categoryName, items, isOpen, index);
-  }).join('');
+function applyComparisonFromQueryParam() {
+  if (!requestedComparison) return;
+  const names = requestedComparison.split(',').map(name => name.trim()).filter(Boolean);
+  const matched = names
+    .map(name => products.find(product => product.name.toLowerCase() === name.toLowerCase()))
+    .filter(Boolean)
+    .slice(0, COMPARISON_MAX)
+    .map(product => product.name);
+  if (matched.length < 2) return;
 
-  if (!wrap.dataset.popularScriptsBound) {
-    wrap.addEventListener('click', async event => {
-      const headerButton = event.target.closest('.script-category-header');
-      if (headerButton && wrap.contains(headerButton)) {
-        toggleScriptCategory(headerButton.closest('.script-category'));
-        return;
-      }
-      const unavailableDiscordButton = event.target.closest('[data-discord-unavailable="true"]');
-      if (unavailableDiscordButton && wrap.contains(unavailableDiscordButton)) {
-        event.preventDefault();
-        event.stopPropagation();
-        openNoOfficialDiscordModal(unavailableDiscordButton.getAttribute('data-script-name') || '');
-        return;
-      }
-      const copyButton = event.target.closest('.script-copy-btn');
-      if (!copyButton || !wrap.contains(copyButton)) return;
-      event.stopPropagation();
-      const scriptValue = copyButton.getAttribute('data-script-copy') || '';
-      if (!scriptValue) return;
-      try {
-        await navigator.clipboard.writeText(scriptValue);
-        copyButton.classList.add('is-copied');
-        window.setTimeout(() => copyButton.classList.remove('is-copied'), 900);
-      } catch (error) {
-        // no-op
-      }
-    });
-    wrap.dataset.popularScriptsBound = 'true';
+  comparisonSelection = matched;
+  syncNavButtonsWithPage('scriptsPage');
+  setActivePage('scriptsPage');
+  syncSubtabButtons('comparisonPanel');
+  setActiveSubtab('comparisonPanel');
+  renderComparisonSystem();
+}
+
+const SCRIPT_FAVORITES_KEY = 'xyrex_script_favorites_v1';
+const SCRIPT_VIEW_KEY = 'xyrex_script_view_v1';
+const SCRIPT_SORT_KEY = 'xyrex_script_sort_v1';
+
+const SCRIPT_FILTERS = [
+  { id: 'favorites', label: 'Favorites', match: script => getScriptFavorites().includes(script.id) },
+  { id: 'working', label: 'Working', match: script => script.status === 'Working' },
+  { id: 'keyless', label: 'Keyless', match: script => /keyless/i.test(script.keySystem) },
+  { id: 'free', label: 'Free', match: script => script.access === 'free' && /free/i.test(script.price) },
+  { id: 'mobile', label: 'Mobile', match: script => script.platform.some(item => /mobile|android|ios/i.test(item)) },
+  { id: 'lowsunc', label: 'Low sUNC', match: script => script.suncMin <= 80 }
+];
+
+const scriptLibraryState = {
+  search: '',
+  sort: 'recommended',
+  view: 'grouped',
+  filters: new Set(),
+  collapsed: new Set()
+};
+
+let scriptCatalogCache = null;
+let scriptToastTimerId = null;
+
+function showToast(message, tone = 'info') {
+  if (!message) return;
+  let toast = qs('#xyrexToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'xyrexToast';
+    toast.className = 'xyrex-toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.dataset.tone = tone;
+  toast.classList.add('is-visible');
+  if (scriptToastTimerId) window.clearTimeout(scriptToastTimerId);
+  scriptToastTimerId = window.setTimeout(() => toast.classList.remove('is-visible'), 2200);
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text || '');
+  if (!value) return false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Falls through to the manual selection path below.
+  }
+  try {
+    const helper = document.createElement('textarea');
+    helper.value = value;
+    helper.setAttribute('readonly', '');
+    helper.style.position = 'fixed';
+    helper.style.top = '-1000px';
+    helper.style.opacity = '0';
+    document.body.appendChild(helper);
+    helper.select();
+    const copied = document.execCommand('copy');
+    helper.remove();
+    return copied;
+  } catch {
+    return false;
   }
 }
 
-function groupScriptsByCategory(scripts) {
-  return scripts.reduce((acc, script) => {
-    const name = stripTrailingPeriod(script.category || script.game || 'Other') || 'Other';
-    if (!acc[name]) acc[name] = [];
-    acc[name].push(script);
-    return acc;
-  }, {});
+function parseSuncFloor(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw || /^any/i.test(raw)) return 0;
+  const found = raw.match(/\d+(?:\.\d+)?/);
+  if (!found) return 0;
+  return Math.max(0, Math.min(100, Number(found[0])));
 }
 
-function getPopularScriptCategories(groupedScripts) {
-  const configuredCategories = POPULAR_SCRIPT_CATEGORIES.map(category => {
-    const existingCategory = Object.keys(groupedScripts).find(name => name.toLowerCase() === category.toLowerCase());
-    return existingCategory || category;
-  });
-  const extraCategories = Object.keys(groupedScripts).filter(category => (
-    !configuredCategories.some(configuredCategory => configuredCategory.toLowerCase() === category.toLowerCase())
-  ));
-  return [...configuredCategories, ...extraCategories];
+function slugifyScriptId(value, fallbackIndex) {
+  const slug = String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || `script-${fallbackIndex}`;
+}
+
+function getScriptStatusTone(status) {
+  if (/working|stable/i.test(status)) return 'positive';
+  if (/buggy|issue|mixed/i.test(status)) return 'warning';
+  if (/patched|down|discontinued|dead/i.test(status)) return 'danger';
+  return 'info';
+}
+
+function getScriptAccessLabel(script) {
+  if (script.access === 'paid') return 'Paid only';
+  if (script.access === 'invite') return 'Invite only';
+  return '';
 }
 
 function getScriptDiscordUrl(stats = {}) {
@@ -1885,66 +2175,456 @@ function getScriptDiscordUrl(stats = {}) {
   return discord;
 }
 
-function getScriptBadges(script) {
-  const stats = script.stats || {};
-  const badges = [];
-  const addBadge = (label, type) => {
-    if (!label) return;
-    badges.push({ label, type });
-  };
-  addBadge(stats.price, /free|keyless|stable|working/i.test(stats.price || '') ? 'positive' : 'info');
-  addBadge(stats.keySystem, /keyless/i.test(stats.keySystem || '') ? 'positive' : /keyed/i.test(stats.keySystem || '') ? 'warning' : 'info');
-  addBadge(stats.suncRequired ? `sUNC ${stats.suncRequired}` : '', 'info');
-  addBadge(stats.bestExecutor ? `Best: ${stats.bestExecutor}` : '', 'info');
-  addBadge(stats.stability, /stable/i.test(stats.stability || '') ? 'positive' : /unstable|buggy/i.test(stats.stability || '') ? 'warning' : 'info');
-  if (typeof stats.buggy === 'boolean') addBadge(stats.buggy ? 'Buggy' : 'Not Buggy', stats.buggy ? 'warning' : 'positive');
-  addBadge(stats.status, /working/i.test(stats.status || '') ? 'positive' : /patched|down/i.test(stats.status || '') ? 'warning' : 'info');
-  if (Array.isArray(stats.platform)) stats.platform.forEach(platform => addBadge(platform, 'info'));
-  return badges.filter(badge => badge.label && !/unknown/i.test(badge.label));
+function getScriptCatalog() {
+  if (scriptCatalogCache) return scriptCatalogCache;
+  const source = Array.isArray(scriptsHubData.popularScripts) ? scriptsHubData.popularScripts : [];
+  const usedIds = new Set();
+
+  scriptCatalogCache = source.map((raw, index) => {
+    const stats = raw.stats || {};
+    const rawScript = typeof raw.script === 'string' ? raw.script.trim() : '';
+    // Older entries stored notes like "PURCHASE FROM DISCORD" in the script field.
+    const isPlaceholder = Boolean(rawScript) && !/[({]/.test(rawScript) && rawScript === rawScript.toUpperCase();
+    const access = String(raw.access || (isPlaceholder ? 'paid' : 'free')).toLowerCase();
+
+    let id = slugifyScriptId(raw.id || raw.name, index);
+    while (usedIds.has(id)) id = `${id}-${index}`;
+    usedIds.add(id);
+
+    const discordUrl = getScriptDiscordUrl(stats);
+    return {
+      id,
+      name: raw.name || 'Untitled script',
+      category: stripTrailingPeriod(raw.category || raw.game || 'Other') || 'Other',
+      description: stripTrailingPeriod(raw.description || ''),
+      script: access === 'free' && !isPlaceholder ? rawScript : '',
+      access,
+      accessNote: raw.accessNote || (isPlaceholder ? rawScript : ''),
+      tags: Array.isArray(raw.tags) ? raw.tags.filter(Boolean).map(String) : [],
+      updated: String(raw.updated || ''),
+      price: cleanMalformedPriceText(stats.price || 'Unknown'),
+      keySystem: stats.keySystem || 'Unknown',
+      suncRequired: stats.suncRequired || 'Any %',
+      suncMin: Number.isFinite(stats.suncMin) ? stats.suncMin : parseSuncFloor(stats.suncRequired),
+      bestExecutor: stats.bestExecutor || 'Any compatible executor',
+      stability: stats.stability || 'Unknown',
+      status: String(stats.status || (stats.buggy ? 'Buggy' : 'Working')),
+      platform: Array.isArray(stats.platform) ? stats.platform.filter(Boolean).map(String) : [],
+      discordUrl,
+      discordState: discordUrl ? 'linked' : stats.discordIcon === false ? 'missing' : 'none'
+    };
+  });
+
+  return scriptCatalogCache;
+}
+
+function getScriptById(scriptId) {
+  return getScriptCatalog().find(item => item.id === scriptId) || null;
+}
+
+function getScriptFavorites() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SCRIPT_FAVORITES_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function toggleScriptFavorite(scriptId) {
+  const favorites = getScriptFavorites();
+  const next = favorites.includes(scriptId) ? favorites.filter(item => item !== scriptId) : [scriptId, ...favorites];
+  localStorage.setItem(SCRIPT_FAVORITES_KEY, JSON.stringify(next));
+  return next.includes(scriptId);
+}
+
+function getScriptSearchHaystack(script) {
+  return [
+    script.name,
+    script.category,
+    script.description,
+    script.bestExecutor,
+    script.keySystem,
+    script.status,
+    script.price,
+    script.suncRequired,
+    ...script.tags,
+    ...script.platform
+  ].join(' ').toLowerCase();
+}
+
+function getFilteredScripts() {
+  const activeFilters = SCRIPT_FILTERS.filter(filter => scriptLibraryState.filters.has(filter.id));
+  const terms = scriptLibraryState.search.toLowerCase().split(/\s+/).filter(Boolean);
+
+  return getScriptCatalog().filter(script => {
+    if (activeFilters.some(filter => !filter.match(script))) return false;
+    if (!terms.length) return true;
+    const haystack = getScriptSearchHaystack(script);
+    return terms.every(term => haystack.includes(term));
+  });
+}
+
+function getScriptCategoryRank(categoryName) {
+  const index = POPULAR_SCRIPT_CATEGORY_ORDER.findIndex(name => name.toLowerCase() === String(categoryName).toLowerCase());
+  return index === -1 ? POPULAR_SCRIPT_CATEGORY_ORDER.length : index;
+}
+
+function sortScripts(list) {
+  const sorted = [...list];
+  if (scriptLibraryState.sort === 'name') return sorted.sort((a, b) => a.name.localeCompare(b.name));
+  if (scriptLibraryState.sort === 'sunc') return sorted.sort((a, b) => a.suncMin - b.suncMin || a.name.localeCompare(b.name));
+  if (scriptLibraryState.sort === 'updated') return sorted.sort((a, b) => b.updated.localeCompare(a.updated) || a.name.localeCompare(b.name));
+
+  const favorites = getScriptFavorites();
+  const statusRank = script => (/working/i.test(script.status) ? 0 : /buggy/i.test(script.status) ? 1 : 2);
+  return sorted.sort((a, b) => {
+    const favoriteDelta = Number(favorites.includes(b.id)) - Number(favorites.includes(a.id));
+    if (favoriteDelta) return favoriteDelta;
+    const statusDelta = statusRank(a) - statusRank(b);
+    if (statusDelta) return statusDelta;
+    const categoryDelta = getScriptCategoryRank(a.category) - getScriptCategoryRank(b.category);
+    if (categoryDelta) return categoryDelta;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function getCompatibleExecutors(script) {
+  const measured = products.filter(product => Number.isFinite(product.sunc));
+  const passing = measured
+    .filter(product => product.sunc >= script.suncMin)
+    .sort((a, b) => b.sunc - a.sunc || a.name.localeCompare(b.name));
+  return { measuredCount: measured.length, passing };
+}
+
+function renderScriptStatGrid(script) {
+  const rows = [
+    ['Game', script.category],
+    ['Key system', script.keySystem],
+    ['sUNC needed', script.suncRequired],
+    ['Platforms', script.platform.length ? script.platform.join(', ') : 'Not listed']
+  ];
+  return `<dl class="script-stat-grid">${rows.map(([label, value]) => `
+    <div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}</dl>`;
+}
+
+function renderScriptDiscordButton(script) {
+  if (script.discordState !== 'linked') return '';
+  return `<a class="script-discord-btn" href="${escapeHtml(script.discordUrl)}" target="_blank" rel="noopener noreferrer" title="Open Discord" aria-label="Open Discord for ${escapeHtml(script.name)}">${popularScriptDiscordSvg}</a>`;
 }
 
 function renderScriptCard(script) {
-  const badges = getScriptBadges(script);
-  const stats = script.stats || {};
-  const discordUrl = getScriptDiscordUrl(stats);
-  const discordButton = discordUrl
-    ? `<a class="script-discord-btn" href="${escapeHtml(discordUrl)}" target="_blank" rel="noopener noreferrer" title="Open Discord" aria-label="Open Discord for ${escapeHtml(script.name)}">${popularScriptDiscordSvg}</a>`
-    : stats.discordIcon === false
-      ? `<button class="script-discord-btn script-discord-btn-unavailable" type="button" data-discord-unavailable="true" data-script-name="${escapeHtml(script.name)}" title="No official Discord" aria-label="No official Discord for ${escapeHtml(script.name)}">${popularScriptDiscordSvg}<span class="script-discord-alert" aria-hidden="true">!</span></button>`
-      : '';
+  const isFavorite = getScriptFavorites().includes(script.id);
+  const accessLabel = getScriptAccessLabel(script);
+  const copyButton = script.script
+    ? `<button class="script-copy-btn" type="button" data-script-copy-id="${escapeHtml(script.id)}" title="Copy script" aria-label="Copy the ${escapeHtml(script.name)} script"><span class="script-file-icon">${popularScriptCopySvg}</span></button>`
+    : '';
+
   return `
-    <article class="script-card">
+    <article class="script-card" data-script-id="${escapeHtml(script.id)}">
       <div class="script-card-head">
-        <h4 class="script-card-title">${escapeHtml(script.name)}</h4>
+        <div class="script-card-heading">
+          <h4 class="script-card-title">${escapeHtml(script.name)}</h4>
+          <span class="script-status-pill ${getScriptStatusTone(script.status)}">${escapeHtml(script.status)}</span>
+          ${accessLabel ? `<span class="script-status-pill info">${escapeHtml(accessLabel)}</span>` : ''}
+        </div>
         <div class="script-card-meta">
-          ${discordButton}
-          <button class="script-copy-btn" type="button" data-script-copy="${escapeHtml(script.script)}" title="Copy script" aria-label="Copy script">
-            <span class="script-file-icon">${popularScriptFileSvg}</span>
-          </button>
+          <button class="script-fav-btn ${isFavorite ? 'is-active' : ''}" type="button" data-script-favorite="${escapeHtml(script.id)}" aria-pressed="${isFavorite}" title="${isFavorite ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${isFavorite ? 'Remove' : 'Add'} ${escapeHtml(script.name)} ${isFavorite ? 'from' : 'to'} favorites">★</button>
+          ${renderScriptDiscordButton(script)}
+          ${copyButton}
         </div>
       </div>
-      <p>${escapeHtml(stripTrailingPeriod(script.description))}</p>
-      ${badges.length ? `<div class="script-stat-badges">${badges.map(badge => `<span class="script-stat-badge ${badge.type}">${escapeHtml(badge.label)}</span>`).join('')}</div>` : ''}
-      <div class="script-code-wrap">
-        <pre>${escapeHtml(script.script)}</pre>
+      <p class="script-card-description">${escapeHtml(script.description)}</p>
+      ${renderScriptStatGrid(script)}
+      ${script.tags.length ? `<div class="script-tag-row">${script.tags.map(tag => `<span class="script-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+      <div class="script-card-actions">
+        <button class="btn-ghost-outline" type="button" data-script-details="${escapeHtml(script.id)}">View details</button>
+        ${script.script ? `<button class="btn-ghost-outline" type="button" data-script-toggle-code="${escapeHtml(script.id)}" aria-expanded="false">Show script</button>` : ''}
       </div>
+      ${script.script
+        ? `<div class="script-code-wrap" data-script-code="${escapeHtml(script.id)}" hidden><pre>${escapeHtml(script.script)}</pre></div>`
+        : `<p class="script-access-note">${escapeHtml(script.accessNote || 'This script is not distributed publicly')}</p>`}
     </article>`;
 }
 
-function renderScriptCategory(categoryName, scripts, isOpen, index) {
+function renderScriptCategory(categoryName, scripts, index) {
+  const isOpen = !scriptLibraryState.collapsed.has(categoryName);
   return `
     <section class="script-category" data-category-name="${escapeHtml(categoryName)}">
-      <button class="script-category-header" type="button" aria-expanded="${isOpen ? 'true' : 'false'}" aria-controls="script-category-body-${index}">
+      <button class="script-category-header" type="button" aria-expanded="${isOpen}" aria-controls="script-category-body-${index}">
         <span class="script-category-title">${escapeHtml(categoryName)}</span>
         <span class="script-category-meta">
           <span class="script-category-count">${scripts.length}</span>
           <span class="script-category-arrow" aria-hidden="true">▼</span>
         </span>
       </button>
-      <div id="script-category-body-${index}" class="script-category-body ${isOpen ? 'open' : ''}">
-        ${scripts.length ? scripts.map(renderScriptCard).join('') : '<div class="script-empty-state"><p>No scripts added yet</p><p>Please wait for a new update</p></div>'}
+      <div id="script-category-body-${index}" class="script-category-body ${isOpen ? 'open' : ''}"${isOpen ? ' style="max-height:none"' : ''}>
+        ${scripts.map(renderScriptCard).join('')}
       </div>
     </section>`;
+}
+
+function renderScriptResultMeta(total, shown, categoryCount) {
+  const meta = qs('#scriptResultMeta');
+  if (!meta) return;
+  const isFiltered = shown !== total;
+  const scriptWord = shown === 1 ? 'script' : 'scripts';
+  const categoryWord = categoryCount === 1 ? 'category' : 'categories';
+  meta.textContent = isFiltered
+    ? `Showing ${shown} of ${total} ${scriptWord} across ${categoryCount} ${categoryWord}`
+    : `${total} ${scriptWord} across ${categoryCount} ${categoryWord}`;
+}
+
+function renderScriptFilterChips() {
+  const wrap = qs('#scriptFilterChips');
+  if (!wrap) return;
+  const catalog = getScriptCatalog();
+  const chips = SCRIPT_FILTERS.map(filter => {
+    const count = catalog.filter(filter.match).length;
+    const isActive = scriptLibraryState.filters.has(filter.id);
+    return `<button class="script-filter-chip ${isActive ? 'is-active' : ''}" type="button" data-script-filter="${filter.id}" aria-pressed="${isActive}"${count ? '' : ' disabled'}>${escapeHtml(filter.label)}<span class="script-filter-count">${count}</span></button>`;
+  });
+  if (scriptLibraryState.filters.size || scriptLibraryState.search) {
+    chips.push('<button class="script-filter-chip script-filter-reset" type="button" data-script-reset="true">Reset</button>');
+  }
+  wrap.innerHTML = chips.join('');
+}
+
+function syncScriptToolbar() {
+  const searchInput = qs('#scriptSearchInput');
+  if (searchInput && searchInput.value !== scriptLibraryState.search) searchInput.value = scriptLibraryState.search;
+  const clearBtn = qs('#scriptSearchClear');
+  if (clearBtn) clearBtn.hidden = !scriptLibraryState.search;
+  const sortSelect = qs('#scriptSortSelect');
+  if (sortSelect && sortSelect.value !== scriptLibraryState.sort) sortSelect.value = scriptLibraryState.sort;
+  qsa('.script-view-btn').forEach(button => {
+    button.classList.toggle('is-active', button.getAttribute('data-script-view') === scriptLibraryState.view);
+  });
+  renderScriptFilterChips();
+}
+
+function renderPopularScripts() {
+  const wrap = qs('#popularScriptsList');
+  if (!wrap) return;
+  syncScriptToolbar();
+
+  const catalog = getScriptCatalog();
+  const matches = sortScripts(getFilteredScripts());
+  const categories = [...new Set(matches.map(script => script.category))]
+    .sort((a, b) => getScriptCategoryRank(a) - getScriptCategoryRank(b) || a.localeCompare(b));
+  renderScriptResultMeta(catalog.length, matches.length, categories.length);
+
+  if (!catalog.length) {
+    wrap.innerHTML = '<div class="script-empty-state"><p>The script library is empty</p><p>Scripts appear here as soon as they are added to the catalog</p></div>';
+    return;
+  }
+
+  if (!matches.length) {
+    wrap.classList.remove('popular-script-categories', 'script-grid-view');
+    wrap.innerHTML = `
+      <div class="script-empty-state">
+        <p>No scripts match your search or filters</p>
+        <button class="btn-ghost-outline" type="button" data-script-reset="true">Clear search and filters</button>
+      </div>`;
+  } else if (scriptLibraryState.view === 'grid') {
+    wrap.classList.remove('popular-script-categories');
+    wrap.classList.add('script-grid-view');
+    wrap.innerHTML = matches.map(renderScriptCard).join('');
+  } else {
+    wrap.classList.add('popular-script-categories');
+    wrap.classList.remove('script-grid-view');
+    wrap.innerHTML = categories
+      .map((categoryName, index) => renderScriptCategory(categoryName, matches.filter(script => script.category === categoryName), index))
+      .join('');
+  }
+
+  bindScriptLibraryEvents(wrap);
+}
+
+function resetScriptLibraryFilters() {
+  scriptLibraryState.search = '';
+  scriptLibraryState.filters.clear();
+  renderPopularScripts();
+}
+
+async function handleScriptCopy(button, script) {
+  const copied = await copyTextToClipboard(script.script);
+  if (!copied) {
+    showToast('Could not copy automatically, select the script text instead', 'warning');
+    return;
+  }
+  showToast(`${script.name} copied to clipboard`, 'positive');
+  if (!button) return;
+  button.classList.add('is-copied');
+  window.setTimeout(() => button.classList.remove('is-copied'), 900);
+}
+
+function bindScriptLibraryEvents(wrap) {
+  if (wrap.dataset.popularScriptsBound === 'true') return;
+
+  wrap.addEventListener('click', async event => {
+    const resetButton = event.target.closest('[data-script-reset]');
+    if (resetButton) {
+      resetScriptLibraryFilters();
+      return;
+    }
+
+    const favoriteButton = event.target.closest('[data-script-favorite]');
+    if (favoriteButton) {
+      event.stopPropagation();
+      const scriptId = favoriteButton.getAttribute('data-script-favorite');
+      const isFavorite = toggleScriptFavorite(scriptId);
+      showToast(isFavorite ? 'Added to favorites' : 'Removed from favorites', 'info');
+      renderPopularScripts();
+      return;
+    }
+
+    const detailsButton = event.target.closest('[data-script-details]');
+    if (detailsButton) {
+      event.stopPropagation();
+      openScriptDetailModal(detailsButton.getAttribute('data-script-details'));
+      return;
+    }
+
+    const codeToggle = event.target.closest('[data-script-toggle-code]');
+    if (codeToggle) {
+      event.stopPropagation();
+      const scriptId = codeToggle.getAttribute('data-script-toggle-code');
+      const codeBlock = wrap.querySelector(`[data-script-code="${CSS.escape(scriptId)}"]`);
+      if (!codeBlock) return;
+      const nextHidden = !codeBlock.hidden;
+      codeBlock.hidden = nextHidden;
+      codeToggle.setAttribute('aria-expanded', String(!nextHidden));
+      codeToggle.textContent = nextHidden ? 'Show script' : 'Hide script';
+      return;
+    }
+
+    const copyButton = event.target.closest('[data-script-copy-id]');
+    if (copyButton) {
+      event.stopPropagation();
+      const script = getScriptById(copyButton.getAttribute('data-script-copy-id'));
+      if (script) await handleScriptCopy(copyButton, script);
+      return;
+    }
+
+    const headerButton = event.target.closest('.script-category-header');
+    if (headerButton) {
+      const categoryElement = headerButton.closest('.script-category');
+      const categoryName = categoryElement?.getAttribute('data-category-name') || '';
+      if (scriptLibraryState.collapsed.has(categoryName)) {
+        scriptLibraryState.collapsed.delete(categoryName);
+      } else {
+        scriptLibraryState.collapsed.add(categoryName);
+      }
+      toggleScriptCategory(categoryElement);
+    }
+  });
+
+  wrap.dataset.popularScriptsBound = 'true';
+}
+
+function buildScriptCompatibilityMarkup(script) {
+  const { measuredCount, passing } = getCompatibleExecutors(script);
+  if (!measuredCount) {
+    return '<p class="script-modal-empty">No executor on this site has a measured sUNC score yet, so compatibility cannot be checked</p>';
+  }
+  if (!script.suncMin) {
+    return `<p class="script-modal-note">This script has no sUNC floor, so any working executor should load it. ${measuredCount} listed executors have a measured score</p>`;
+  }
+  if (!passing.length) {
+    return `<p class="script-modal-note">None of the ${measuredCount} executors with a measured sUNC score reach ${escapeHtml(String(script.suncMin))}%</p>`;
+  }
+  return `
+    <p class="script-modal-note">${passing.length} of ${measuredCount} executors with a measured sUNC score reach ${escapeHtml(String(script.suncMin))}%</p>
+    <div class="script-compat-chips">
+      ${passing.map(product => `<span class="script-compat-chip">${escapeHtml(product.name)}<span>${escapeHtml(String(product.sunc))}%</span></span>`).join('')}
+    </div>`;
+}
+
+function openScriptDetailModal(scriptId) {
+  const script = getScriptById(scriptId);
+  const overlay = qs('#modalOverlay');
+  const content = qs('#modalContent');
+  if (!script || !overlay || !content) return;
+
+  setCompactModal(false);
+  lastModalTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+  const isFavorite = getScriptFavorites().includes(script.id);
+  const accessLabel = getScriptAccessLabel(script);
+  const detailRows = [
+    ['Game', script.category],
+    ['Status', script.status],
+    ['Price', script.price],
+    ['Key system', script.keySystem],
+    ['sUNC needed', script.suncRequired],
+    ['Best executor', script.bestExecutor],
+    ['Stability', script.stability],
+    ['Platforms', script.platform.length ? script.platform.join(', ') : 'Not listed'],
+    ['Discord', script.discordState === 'linked' ? 'Official server listed' : 'Not listed'],
+    ['Entry updated', script.updated || 'Not recorded']
+  ];
+
+  content.innerHTML = `
+    <section class="script-modal" data-script-id="${escapeHtml(script.id)}">
+      <div class="script-modal-head">
+        <div>
+          <h2>${escapeHtml(script.name)}</h2>
+          <p class="script-modal-description">${escapeHtml(script.description)}</p>
+        </div>
+        <div class="script-modal-pills">
+          <span class="script-status-pill ${getScriptStatusTone(script.status)}">${escapeHtml(script.status)}</span>
+          ${accessLabel ? `<span class="script-status-pill info">${escapeHtml(accessLabel)}</span>` : ''}
+        </div>
+      </div>
+
+      ${script.tags.length ? `<div class="script-tag-row">${script.tags.map(tag => `<span class="script-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+
+      <dl class="script-modal-stats">
+        ${detailRows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}
+      </dl>
+
+      <div class="script-modal-section">
+        <h3>Executors that can run this</h3>
+        ${buildScriptCompatibilityMarkup(script)}
+      </div>
+
+      <div class="script-modal-section">
+        <h3>${script.script ? 'Loader' : 'How to get it'}</h3>
+        ${script.script
+          ? `<div class="script-code-wrap"><pre>${escapeHtml(script.script)}</pre></div>`
+          : `<p class="script-modal-note">${escapeHtml(script.accessNote || 'This script is not distributed publicly')}</p>`}
+      </div>
+
+      <div class="script-modal-actions">
+        ${script.script ? '<button class="btn-primary" type="button" data-modal-copy-script>Copy script</button>' : ''}
+        ${script.script ? '<button class="btn-ghost-outline" type="button" data-modal-save-script>Save to my scripts</button>' : ''}
+        <button class="btn-ghost-outline" type="button" data-modal-copy-link>Copy link</button>
+        <button class="btn-ghost-outline ${isFavorite ? 'is-active' : ''}" type="button" data-modal-favorite>${isFavorite ? 'Remove favorite' : 'Add favorite'}</button>
+        ${script.discordState === 'linked' ? `<a class="btn-ghost-outline" href="${escapeHtml(script.discordUrl)}" target="_blank" rel="noopener noreferrer">Open Discord</a>` : ''}
+      </div>
+    </section>`;
+
+  content.querySelector('[data-modal-copy-script]')?.addEventListener('click', () => handleScriptCopy(null, script));
+  content.querySelector('[data-modal-copy-link]')?.addEventListener('click', async () => {
+    const link = `${window.location.origin}/scripthub?script=${encodeURIComponent(script.id)}`;
+    const copied = await copyTextToClipboard(link);
+    showToast(copied ? 'Link copied to clipboard' : 'Could not copy the link', copied ? 'positive' : 'warning');
+  });
+  content.querySelector('[data-modal-save-script]')?.addEventListener('click', () => {
+    saveScriptToLibrary(script);
+    showToast(`${script.name} saved to your scripts`, 'positive');
+  });
+  content.querySelector('[data-modal-favorite]')?.addEventListener('click', event => {
+    const nowFavorite = toggleScriptFavorite(script.id);
+    event.currentTarget.textContent = nowFavorite ? 'Remove favorite' : 'Add favorite';
+    event.currentTarget.classList.toggle('is-active', nowFavorite);
+    renderPopularScripts();
+  });
+
+  overlay.classList.remove('is-closing');
+  overlay.setAttribute('aria-hidden', 'false');
+  qs('#modalCloseBtn').focus();
 }
 
 function toggleScriptCategory(categoryElement) {
@@ -1983,10 +2663,108 @@ function toggleScriptCategory(categoryElement) {
   body.addEventListener('transitionend', onTransitionEnd);
 }
 
+function initScriptLibraryControls() {
+  const storedView = localStorage.getItem(SCRIPT_VIEW_KEY);
+  if (storedView === 'grid' || storedView === 'grouped') scriptLibraryState.view = storedView;
+  const storedSort = localStorage.getItem(SCRIPT_SORT_KEY);
+  if (storedSort && ['recommended', 'updated', 'name', 'sunc'].includes(storedSort)) scriptLibraryState.sort = storedSort;
+
+  const searchInput = qs('#scriptSearchInput');
+  searchInput?.addEventListener('input', () => {
+    scriptLibraryState.search = searchInput.value.trim();
+    renderPopularScripts();
+  });
+  searchInput?.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !searchInput.value) return;
+    event.stopPropagation();
+    searchInput.value = '';
+    scriptLibraryState.search = '';
+    renderPopularScripts();
+  });
+
+  qs('#scriptSearchClear')?.addEventListener('click', () => {
+    scriptLibraryState.search = '';
+    renderPopularScripts();
+    searchInput?.focus();
+  });
+
+  qs('#scriptSortSelect')?.addEventListener('change', event => {
+    scriptLibraryState.sort = event.target.value;
+    localStorage.setItem(SCRIPT_SORT_KEY, scriptLibraryState.sort);
+    renderPopularScripts();
+  });
+
+  qsa('.script-view-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      scriptLibraryState.view = button.getAttribute('data-script-view') === 'grid' ? 'grid' : 'grouped';
+      localStorage.setItem(SCRIPT_VIEW_KEY, scriptLibraryState.view);
+      renderPopularScripts();
+    });
+  });
+
+  qs('#scriptFilterChips')?.addEventListener('click', event => {
+    const resetButton = event.target.closest('[data-script-reset]');
+    if (resetButton) {
+      resetScriptLibraryFilters();
+      return;
+    }
+    const chip = event.target.closest('[data-script-filter]');
+    if (!chip) return;
+    const filterId = chip.getAttribute('data-script-filter');
+    if (scriptLibraryState.filters.has(filterId)) {
+      scriptLibraryState.filters.delete(filterId);
+    } else {
+      scriptLibraryState.filters.add(filterId);
+    }
+    renderPopularScripts();
+  });
+}
+
+// Captured before the router rewrites the path, which drops the query string.
+const requestedScriptId = new URLSearchParams(window.location.search).get('script') || '';
+const requestedComparison = new URLSearchParams(window.location.search).get('compare') || '';
+
+function openScriptFromQueryParam() {
+  const scriptId = requestedScriptId;
+  if (!scriptId || !getScriptById(scriptId)) return;
+  syncNavButtonsWithPage('scriptsPage');
+  setActivePage('scriptsPage');
+  syncSubtabButtons('popularScriptsPanel');
+  setActiveSubtab('popularScriptsPanel');
+  openScriptDetailModal(scriptId);
+}
+
 function renderRecentChanges() {
   const wrap = qs('#recentChangesList');
   if (!wrap) return;
-  wrap.innerHTML = scriptsHubData.recentChanges.map(entry => `<li>${escapeHtml(entry)}</li>`).join('');
+  const releases = Array.isArray(window.XYREX_CHANGELOG) ? window.XYREX_CHANGELOG : [];
+  if (!releases.length) {
+    wrap.innerHTML = '<div class="script-empty-state"><p>No changelog entries yet</p></div>';
+    return;
+  }
+
+  const toneFor = type => ({ added: 'positive', fixed: 'info', changed: 'warning', removed: 'danger' }[String(type).toLowerCase()] || 'info');
+  const formatDate = value => {
+    const parsed = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  wrap.innerHTML = releases.map(release => `
+    <article class="changelog-entry">
+      <div class="changelog-entry-head">
+        <h4>${escapeHtml(release.version || 'Update')}</h4>
+        <time datetime="${escapeHtml(release.date || '')}">${escapeHtml(formatDate(release.date))}</time>
+      </div>
+      ${release.summary ? `<p class="changelog-summary">${escapeHtml(release.summary)}</p>` : ''}
+      <ul class="changelog-items">
+        ${(release.entries || []).map(entry => `
+          <li>
+            <span class="changelog-type ${toneFor(entry.type)}">${escapeHtml(entry.type || 'Changed')}</span>
+            <span>${escapeHtml(entry.text || '')}</span>
+          </li>`).join('')}
+      </ul>
+    </article>`).join('');
 }
 
 function getAssistantKnowledgeText(product) {
@@ -2021,6 +2799,7 @@ const assistantLoadingProfiles = Object.freeze({
 });
 let assistantContext = { lastIntent:null, lastExecutors:[], lastFilters:{}, lastQuestion:'', lastRecommendation:null, conversationFocus:null, turns:[] };
 let assistantReplyTarget = null;
+let assistantPanelRefresh = () => {};
 
 
 
@@ -2575,13 +3354,29 @@ function initExploitAssistant() {
     const actions = document.createElement('div');
     actions.className = 'assistant-actions';
 
+    const actionRow = document.createElement('div');
+    actionRow.className = 'assistant-action-row';
+
     const replyButton = document.createElement('button');
     replyButton.type = 'button';
     replyButton.className = 'assistant-reply-btn';
     replyButton.textContent = 'Reply';
     replyButton.setAttribute('aria-label', 'Reply directly to this assistant message');
     replyButton.addEventListener('click', () => setReplyTargetFromMessage(messageElement));
-    actions.appendChild(replyButton);
+    actionRow.appendChild(replyButton);
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'assistant-reply-btn';
+    copyButton.textContent = 'Copy';
+    copyButton.setAttribute('aria-label', 'Copy this assistant reply');
+    copyButton.addEventListener('click', async () => {
+      const text = messageElement.querySelector('.assistant-markdown, .assistant-message-content')?.textContent || '';
+      const copied = await copyTextToClipboard(text.trim());
+      showToast(copied ? 'Reply copied to clipboard' : 'Could not copy that reply', copied ? 'positive' : 'warning');
+    });
+    actionRow.appendChild(copyButton);
+    actions.appendChild(actionRow);
 
     const followUps = Array.isArray(apiReply?.followUps) ? apiReply.followUps.filter(Boolean).slice(0, 4) : [];
     if (followUps.length) {
@@ -2623,9 +3418,11 @@ function initExploitAssistant() {
 
     if (!consumeAiTokenForAssistant()) {
       appendMessage('bot', NO_ASSISTANT_TOKENS_MESSAGE, ['AI Tokens']);
+      assistantPanelRefresh();
       openNoAiTokensModal();
       return;
     }
+    assistantPanelRefresh();
 
     const activeReplyTarget = assistantReplyTarget;
     const displayMessage = activeReplyTarget
@@ -2695,20 +3492,86 @@ function initExploitAssistant() {
       }
       input.disabled = false;
       sendBtn.disabled = false;
+      assistantPanelRefresh();
       input.focus();
     }
   }
 
-  if (!messages.children.length) {
+  const starter = qs('#assistantStarter');
+  const tokenMeter = qs('#assistantTokenMeter');
+  const charCount = qs('#assistantCharCount');
+  const clearBtn = qs('#assistantClearBtn');
+
+  const refreshTokenMeter = () => {
+    if (!tokenMeter) return;
+    const summary = getAiTokenSummary();
+    tokenMeter.textContent = summary.available > 0
+      ? `${summary.available} AI token${summary.available === 1 ? '' : 's'} left today`
+      : 'No AI tokens left — they reset at midnight';
+    tokenMeter.classList.toggle('is-empty', summary.available <= 0);
+  };
+
+  const refreshCharCount = () => {
+    if (!charCount) return;
+    charCount.textContent = `${input.value.length} / ${input.maxLength}`;
+  };
+
+  const renderStarter = () => {
+    if (!starter) return;
+    const hasConversation = messages.querySelector('.assistant-user');
+    starter.hidden = Boolean(hasConversation);
+    if (hasConversation) return;
+    const prompts = [
+      'Which executors are safest for beginners?',
+      'What is the best free executor right now?',
+      'Compare Potassium and Xeno',
+      'Which executors work on mobile?',
+      'What is the difference between sUNC and UNC?',
+      'Show me keyless executors'
+    ];
+    starter.innerHTML = `
+      <p class="assistant-starter-title">Try one of these</p>
+      <div class="assistant-starter-chips">
+        ${prompts.map(prompt => `<button class="assistant-starter-chip" type="button" data-assistant-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`).join('')}
+      </div>`;
+  };
+
+  starter?.addEventListener('click', event => {
+    const chip = event.target.closest('[data-assistant-prompt]');
+    if (!chip) return;
+    submitAssistantMessage(chip.getAttribute('data-assistant-prompt') || '');
+  });
+
+  input.addEventListener('input', refreshCharCount);
+
+  clearBtn?.addEventListener('click', () => {
+    messages.innerHTML = '';
+    assistantContext = { lastIntent: null, lastExecutors: [], lastFilters: {}, lastQuestion: '', lastRecommendation: null, conversationFocus: null, turns: [] };
+    assistantReplyTarget = null;
+    refreshReplyBanner();
+    seedWelcomeMessage();
+    renderStarter();
+    showToast('Conversation cleared', 'info');
+  });
+
+  function seedWelcomeMessage() {
     const welcome = appendMessage('bot', 'Hello. I am your Exploit Assistant. Ask me about active executors, compatibility, platforms, pricing, risk, or terminology.', ['Local Data']);
     appendAssistantActions(welcome, { followUps: ['What can you do?', 'Compare sUNC and UNC?', 'Which executors are safest for beginners?'] }, '');
   }
+
+  if (!messages.children.length) seedWelcomeMessage();
 
   form.addEventListener('submit', event => {
     event.preventDefault();
     submitAssistantMessage(input.value);
   });
 
+  assistantPanelRefresh = () => {
+    refreshTokenMeter();
+    renderStarter();
+    refreshCharCount();
+  };
+  assistantPanelRefresh();
   refreshReplyBanner();
 }
 
@@ -2723,11 +3586,21 @@ window.XyrexAISystem = Object.freeze({
 
 const savedScriptsStorageKey = 'xyrex_saved_scripts_v1';
 let currentSavedScriptId = null;
+let savedScriptsSearchTerm = '';
 
 function getSavedScripts() {
   try {
     const parsed = JSON.parse(localStorage.getItem(savedScriptsStorageKey) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(item => item && typeof item === 'object' && item.id)
+      .map(item => ({
+        id: String(item.id),
+        title: String(item.title || 'Untitled script'),
+        body: String(item.body || ''),
+        createdAt: Number(item.createdAt) || Number(item.updatedAt) || Date.now(),
+        updatedAt: Number(item.updatedAt) || Date.now()
+      }));
   } catch {
     return [];
   }
@@ -2737,21 +3610,71 @@ function writeSavedScripts(items) {
   localStorage.setItem(savedScriptsStorageKey, JSON.stringify(items));
 }
 
+function saveScriptToLibrary(script) {
+  const items = getSavedScripts();
+  const existing = items.find(item => item.title === script.name);
+  const now = Date.now();
+  const nextItem = {
+    id: existing?.id || `script_${now}`,
+    title: script.name,
+    body: script.script,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+  writeSavedScripts([nextItem, ...items.filter(item => item.id !== nextItem.id)]);
+  renderSavedScriptsList();
+}
+
+function formatByteSize(value) {
+  const characters = String(value || '').length;
+  if (characters < 1000) return `${characters} characters`;
+  return `${(characters / 1000).toFixed(1)}k characters`;
+}
+
 function renderSavedScriptsList() {
   const wrap = qs('#savedScriptsList');
   if (!wrap) return;
 
-  const items = getSavedScripts();
+  const items = getSavedScripts().sort((a, b) => b.updatedAt - a.updatedAt);
+  const term = savedScriptsSearchTerm.toLowerCase();
+  const visible = term
+    ? items.filter(item => `${item.title} ${item.body}`.toLowerCase().includes(term))
+    : items;
+
   if (!items.length) {
-    wrap.innerHTML = '<p class="saved-empty">No saved scripts yet</p>';
+    wrap.innerHTML = '<div class="script-empty-state"><p>No saved scripts yet</p><p>Paste a script above, or save one straight from the Script Library</p></div>';
     return;
   }
 
-  wrap.innerHTML = items.map(item => `
-    <button class="saved-script-item ${item.id === currentSavedScriptId ? 'is-active' : ''}" data-saved-script-id="${escapeHtml(item.id)}" type="button">
-      <strong>${escapeHtml(item.title)}</strong>
-      <span>${new Date(item.updatedAt).toLocaleString()}</span>
-    </button>`).join('');
+  if (!visible.length) {
+    wrap.innerHTML = '<div class="script-empty-state"><p>No saved scripts match that search</p></div>';
+    return;
+  }
+
+  wrap.innerHTML = visible.map(item => `
+    <article class="saved-script-item ${item.id === currentSavedScriptId ? 'is-active' : ''}" data-saved-item="${escapeHtml(item.id)}">
+      <button class="saved-script-open" type="button" data-saved-script-id="${escapeHtml(item.id)}">
+        <strong>${escapeHtml(item.title)}</strong>
+        <span>${escapeHtml(formatByteSize(item.body))} • updated ${escapeHtml(new Date(item.updatedAt).toLocaleString())}</span>
+      </button>
+      <div class="saved-script-item-actions">
+        <button class="btn-ghost-outline" type="button" data-saved-copy="${escapeHtml(item.id)}">Copy</button>
+        <button class="btn-ghost-outline" type="button" data-saved-delete="${escapeHtml(item.id)}">Delete</button>
+      </div>
+    </article>`).join('');
+}
+
+function updateSavedEditorCounter() {
+  const counter = qs('#savedScriptCounter');
+  const bodyInput = qs('#savedScriptBody');
+  if (!counter || !bodyInput) return;
+  counter.textContent = formatByteSize(bodyInput.value);
+}
+
+function setSavedEditorStatus(message = '') {
+  const status = qs('#savedEditorStatus');
+  if (!status) return;
+  status.textContent = message;
 }
 
 function clearSavedScriptEditor() {
@@ -2761,6 +3684,7 @@ function clearSavedScriptEditor() {
   nameInput.value = '';
   bodyInput.value = '';
   qs('#savedScriptError').hidden = true;
+  updateSavedEditorCounter();
 }
 
 function setEditorFromSavedScript(item) {
@@ -2769,6 +3693,8 @@ function setEditorFromSavedScript(item) {
   if (!nameInput || !bodyInput) return;
   nameInput.value = item?.title || '';
   bodyInput.value = item?.body || '';
+  updateSavedEditorCounter();
+  setSavedEditorStatus(item ? `Editing "${item.title}"` : '');
 }
 
 function saveScriptFromEditor() {
@@ -2788,28 +3714,158 @@ function saveScriptFromEditor() {
   errorBlock.hidden = true;
 
   const items = getSavedScripts();
+  const existing = items.find(item => item.id === currentSavedScriptId);
+  const now = Date.now();
   const scriptToPersist = {
-    id: currentSavedScriptId || `script_${Date.now()}`,
+    id: currentSavedScriptId || `script_${now}`,
     title: trimmedTitle,
     body: bodyInput.value,
-    updatedAt: Date.now()
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
   };
 
-  const withoutCurrent = items.filter(item => item.id !== currentSavedScriptId);
-  writeSavedScripts([scriptToPersist, ...withoutCurrent]);
+  writeSavedScripts([scriptToPersist, ...items.filter(item => item.id !== scriptToPersist.id)]);
   currentSavedScriptId = null;
   clearSavedScriptEditor();
   renderSavedScriptsList();
+  setSavedEditorStatus(`Saved "${trimmedTitle}"`);
+  showToast(`Saved "${trimmedTitle}"`, 'positive');
   nameInput.focus();
 }
 
-function deleteSelectedScript() {
-  if (!currentSavedScriptId) return;
-  const items = getSavedScripts().filter(item => item.id !== currentSavedScriptId);
-  writeSavedScripts(items);
-  currentSavedScriptId = null;
-  clearSavedScriptEditor();
+function deleteSavedScriptById(scriptId) {
+  const items = getSavedScripts();
+  const target = items.find(item => item.id === scriptId);
+  if (!target) return;
+  writeSavedScripts(items.filter(item => item.id !== scriptId));
+  if (currentSavedScriptId === scriptId) {
+    currentSavedScriptId = null;
+    clearSavedScriptEditor();
+  }
   renderSavedScriptsList();
+  setSavedEditorStatus(`Deleted "${target.title}"`);
+  showToast(`Deleted "${target.title}"`, 'info');
+}
+
+function deleteSelectedScript() {
+  if (!currentSavedScriptId) {
+    setSavedEditorStatus('Select a saved script first');
+    return;
+  }
+  deleteSavedScriptById(currentSavedScriptId);
+}
+
+function exportSavedScripts() {
+  const items = getSavedScripts();
+  if (!items.length) {
+    showToast('There is nothing to export yet', 'warning');
+    return;
+  }
+  const payload = JSON.stringify({ exportedAt: new Date().toISOString(), scripts: items }, null, 2);
+  const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `xyrex-saved-scripts-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${items.length} script${items.length === 1 ? '' : 's'}`, 'positive');
+}
+
+async function importSavedScripts(file) {
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    const incoming = Array.isArray(parsed) ? parsed : parsed?.scripts;
+    if (!Array.isArray(incoming)) throw new Error('Unexpected file shape');
+
+    const existing = getSavedScripts();
+    const merged = new Map(existing.map(item => [item.id, item]));
+    let added = 0;
+
+    incoming.forEach(item => {
+      if (!item || typeof item !== 'object' || !item.title || !item.body) return;
+      const id = String(item.id || `script_${Date.now()}_${added}`);
+      const current = merged.get(id);
+      const updatedAt = Number(item.updatedAt) || Date.now();
+      if (current && current.updatedAt >= updatedAt) return;
+      merged.set(id, {
+        id,
+        title: String(item.title),
+        body: String(item.body),
+        createdAt: Number(item.createdAt) || updatedAt,
+        updatedAt
+      });
+      added += 1;
+    });
+
+    writeSavedScripts([...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt));
+    renderSavedScriptsList();
+    showToast(added ? `Imported ${added} script${added === 1 ? '' : 's'}` : 'Nothing new to import', added ? 'positive' : 'info');
+  } catch {
+    showToast('That file could not be read as a Xyrex script export', 'warning');
+  }
+}
+
+function initSavedScripts() {
+  const listWrap = qs('#savedScriptsList');
+  listWrap?.addEventListener('click', async event => {
+    const copyTrigger = event.target.closest('[data-saved-copy]');
+    if (copyTrigger) {
+      const item = getSavedScripts().find(entry => entry.id === copyTrigger.getAttribute('data-saved-copy'));
+      if (!item) return;
+      const copied = await copyTextToClipboard(item.body);
+      showToast(copied ? `${item.title} copied to clipboard` : 'Could not copy that script', copied ? 'positive' : 'warning');
+      return;
+    }
+
+    const deleteTrigger = event.target.closest('[data-saved-delete]');
+    if (deleteTrigger) {
+      deleteSavedScriptById(deleteTrigger.getAttribute('data-saved-delete'));
+      return;
+    }
+
+    const openTrigger = event.target.closest('[data-saved-script-id]');
+    if (!openTrigger) return;
+    const selectedId = openTrigger.getAttribute('data-saved-script-id');
+    if (selectedId === currentSavedScriptId) {
+      currentSavedScriptId = null;
+      clearSavedScriptEditor();
+      setSavedEditorStatus('');
+      renderSavedScriptsList();
+      return;
+    }
+    currentSavedScriptId = selectedId;
+    setEditorFromSavedScript(getSavedScripts().find(item => item.id === currentSavedScriptId));
+    renderSavedScriptsList();
+  });
+
+  qs('#saveScriptBtn')?.addEventListener('click', saveScriptFromEditor);
+  qs('#deleteScriptBtn')?.addEventListener('click', deleteSelectedScript);
+  qs('#newScriptBtn')?.addEventListener('click', () => {
+    currentSavedScriptId = null;
+    clearSavedScriptEditor();
+    setSavedEditorStatus('');
+    renderSavedScriptsList();
+    qs('#savedScriptName')?.focus();
+  });
+
+  qs('#savedScriptBody')?.addEventListener('input', updateSavedEditorCounter);
+  qs('#savedScriptSearch')?.addEventListener('input', event => {
+    savedScriptsSearchTerm = event.target.value.trim();
+    renderSavedScriptsList();
+  });
+
+  qs('#exportScriptsBtn')?.addEventListener('click', exportSavedScripts);
+  const importInput = qs('#importScriptsInput');
+  qs('#importScriptsBtn')?.addEventListener('click', () => importInput?.click());
+  importInput?.addEventListener('change', async event => {
+    await importSavedScripts(event.target.files?.[0]);
+    event.target.value = '';
+  });
+
+  updateSavedEditorCounter();
 }
 
 
@@ -3130,9 +4186,11 @@ function initScriptsHub() {
   cleanupAetherCoreBranding();
   renderSmartRankings();
   renderComparisonSystem();
+  initScriptLibraryControls();
   renderPopularScripts();
   cleanupAetherCoreBranding();
   renderRecentChanges();
+  initSavedScripts();
   renderSavedScriptsList();
   initExploitAssistant();
 
@@ -3225,6 +4283,19 @@ function init() {
   applyExecutorTabPreferences();
   setBetaFeaturesEnabled(getBetaFeaturesEnabled());
   syncNavigationLayoutMetrics();
+
+  const storedExecutorSort = localStorage.getItem(EXECUTOR_SORT_KEY);
+  const executorSortSelect = qs('#executorSortSelect');
+  if (storedExecutorSort && ['featured', 'name', 'sunc', 'trust', 'price'].includes(storedExecutorSort)) {
+    executorSortMode = storedExecutorSort;
+    if (executorSortSelect) executorSortSelect.value = executorSortMode;
+  }
+  executorSortSelect?.addEventListener('change', event => {
+    executorSortMode = event.target.value;
+    localStorage.setItem(EXECUTOR_SORT_KEY, executorSortMode);
+    applyAllFilters();
+  });
+
   renderProducts(products);
   initWeaoStatuses();
   initScriptsHub();
@@ -3285,6 +4356,8 @@ function init() {
   });
 
   applyRoute(getInitialRoutePath(), true).finally(() => {
+    applyComparisonFromQueryParam();
+    openScriptFromQueryParam();
     window.setTimeout(hideInitialLoadingOverlay, 1000);
   });
 

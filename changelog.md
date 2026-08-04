@@ -1,5 +1,63 @@
 # Changelog
 
+## 2026-08-04 (Scripts Hub: Smart Rankings, Comparison, Assistant)
+
+### Added
+- An overall leaderboard at the top of Smart Rankings listing the top 10 executors by combined score, with per-entry signal chips and score bars. The tab previously showed category winners but never an actual ranking.
+- Runners-up (ranks 2 and 3) on every ranking card, plus a safety/power/value breakdown for the winner.
+- Platform scope chips (All / Windows / Mobile / macOS) that recompute every ranking against that subset.
+- Click-through from any executor in Smart Rankings, the leaderboard, or a runner-up row to that executor's full profile modal.
+- A "Best Paid Pick" category scoped to executors with no free tier, and a note naming any executor that tops most categories so the runners-up are easier to find.
+- Comparison: a live WEAO status row, a "n of 3 selected" counter, disabled state on the picker once full, clear-all, sUNC values on picker chips, copy-as-markdown-table, and shareable `?compare=` links.
+- Comparison verdict cards now list which metrics each executor actually wins, plus its signal chips.
+- Exploit Assistant: a live AI token meter so the daily limit is visible before it runs out, six suggested prompts filling the previously dead starter element, a clear-chat button, a copy button on every reply, and an input character counter.
+
+### Changed
+- Extracted the safety/power/value/stability scoring out of `computeSmartRanking`'s closure into a shared `ExecutorScoring` engine. Smart Rankings and the comparison verdict now agree, instead of the comparison using its own formula that treated a missing sUNC as 55.
+- Ranking justifications list real signals (sUNC value, trust level, live status, key system, feature count) instead of templated text like "balanced safety, stability, value, and capability metadata".
+- Ranking cards no longer claim to be "Updated for <month>" when they are recomputed on every page load; they state the scope and pool size instead.
+
+### Fixed
+- Comparison rows where every selected executor reads Unknown are hidden behind a toggle rather than padding the table.
+- Assistant Reply and Copy buttons no longer sit at `opacity: 0` until hover, which reserved dead space in every reply and made them unreachable on touch devices.
+
+### Removed
+- The empty `#assistantStarter` element that CSS had been hiding with `display: none` since it was never populated.
+
+## 2026-08-04 (Scripts Hub: Script Library, Saved Scripts, Changelog)
+
+### Added
+- Script Library search, filter chips (Favorites, Working, Keyless, Free, Mobile, Low sUNC), and sorting (Recommended, Recently updated, Name, Lowest sUNC needed), with live result counts.
+- A detail view for every script showing full stats, the complete loader, tags, and a shareable `?script=<id>` deep link that opens the script directly.
+- Compatibility matching in the script detail view: the sUNC floor of each script is checked against every executor listed on the site, so the modal names which executors clear the bar and by how much.
+- Favorites for scripts, persisted per account through the existing scoped-storage shim and pinned to the top of the Recommended sort.
+- A grid view alongside the grouped category view, with the choice and the sort mode remembered between visits.
+- Saved Scripts gained per-item copy, load, and delete controls, a search box, a live character counter, and JSON export/import that merges by newest `updatedAt`.
+- "Save to my scripts" in the script detail view, which copies a library script straight into Saved Scripts.
+- A toast system and a clipboard fallback, so copy still works outside secure contexts instead of failing silently.
+- Executor sorting (featured, name, sUNC, trust, price), a live result count, and a Live Status filter wired to the WEAO feed.
+
+### Changed
+- Script cards lead with a status pill and a labelled stat grid instead of a row of visually identical badges.
+- Script categories are derived from the catalog, so a category exists only while it holds scripts and appears automatically when the first one is added.
+- Categories now render expanded by default rather than all collapsed.
+- Executor search matches descriptions, tags, features, platforms, and pricing rather than names only, and supports multiple terms.
+- The Recent Changes tab became a dated changelog timeline driven by `data/site-changelog.js`, replacing a single line pointing at Discord.
+- Comparison selections are removable chips instead of decorative `×` text.
+- Renamed the "Popular Scripts" tab to "Script Library" and dropped the stale `[NEW]` and `[UPDATED]` tab labels.
+
+### Fixed
+- Paid and invite-only scripts no longer render a copy button that copies a placeholder such as `PURCHASE FROM DISCORD`; they show how to obtain the script instead.
+- Smart Rankings read `High` and `Medium` trust levels again. The trust map only had `trusted`/`caution` keys, so 11 of 37 executors silently contributed no trust signal to the safety score.
+- The comparison table can pick a winner for Key System and Trust Level again; both lookups compared against values that never occur in the data (`'key'`, `'trusted'`).
+- Comparison rows for Cheat Type and Status no longer test lowercase strings against capitalised data.
+- The script library toolbar no longer stretches to a 260px-tall search box on narrow screens, where the horizontal `flex-basis` became a vertical one.
+
+### Removed
+- Roughly 1,400 lines of commented-out placeholder entries from `data/popular-scripts.js`.
+- Nine empty game categories that rendered as identical "No scripts added yet" accordions.
+- The red alert badge that fired on every script without a listed Discord, which read as an error state on most of the library.
+
 ## 2026-07-18
 
 ### Fixed
