@@ -1481,18 +1481,55 @@ function estimatedPriceValue(product) {
   return Math.min(...numbers);
 }
 
-function computeSmartRanking() {
-  const clampScore = value => Math.max(0, Math.min(100, Math.round(value)));
+const ExecutorScoring = (() => {
+  const clamp = value => Math.max(0, Math.min(100, Math.round(value)));
+  const list = value => (Array.isArray(value) ? value.filter(Boolean).map(String) : []);
+  const has = value => value !== null && value !== undefined && String(value).trim() !== '';
   const mapValue = (value, map) => map[String(value || '').toLowerCase()] ?? null;
-  const trustScoreMap = { high: 96, trusted: 96, medium: 68, caution: 68, low: 36, risky: 36, unknown: 52 };
-  const stabilityScoreLabelMap = { 'very stable': 100, stable: 92, high: 96, medium: 72, mixed: 62, basic: 48, questionable: 34, low: 46, unstable: 30, unknown: 42 };
-  const normalizeList = value => Array.isArray(value) ? value.filter(Boolean).map(String) : [];
-  const hasValue = value => value !== null && value !== undefined && String(value).trim() !== '';
-  const formatPlatformOrType = product => normalizeList(product.platform).join(', ') || product.cheatType || 'Unknown';
-  const formatScore = score => Number.isFinite(score) ? clampScore(score) : null;
-  const metadataCoverage = product => [
+
+  const trustMap = { high: 96, trusted: 96, medium: 68, caution: 68, low: 36, risky: 36, unknown: 52 };
+  const stabilityMap = { 'very stable': 100, stable: 92, high: 96, medium: 72, mixed: 62, basic: 48, questionable: 34, low: 46, unstable: 30, unknown: 42 };
+
+  const weighted = parts => {
+    const usable = parts.filter(part => part && Number.isFinite(part.value));
+    if (!usable.length) return null;
+    const totalWeight = usable.reduce((sum, part) => sum + part.weight, 0);
+    return clamp(usable.reduce((sum, part) => sum + part.value * part.weight, 0) / totalWeight);
+  };
+
+  const stability = product => mapValue(product.stability, stabilityMap);
+  const sunc = product => (Number.isFinite(product.sunc) ? clamp(product.sunc) : null);
+
+  const safety = product => weighted([
+    { value: mapValue(product.trustLevel, trustMap), weight: 0.52 },
+    { value: stability(product), weight: 0.28 },
+    { value: has(product.status) || has(product.trustLevel) ? (10 - detectionRiskScore(product)) * 10 : null, weight: 0.2 }
+  ]);
+
+  const power = product => weighted([
+    { value: sunc(product), weight: 0.65 },
+    { value: list(product.features).length ? Math.min(100, list(product.features).length * 14) : null, weight: 0.2 },
+    { value: has(product.cheatType) ? (/internal/i.test(product.cheatType) ? 92 : 72) : null, weight: 0.15 }
+  ]);
+
+  const value = product => {
+    const price = estimatedPriceValue(product);
+    const hasPricing = list(product.pricingOptions).length || has(product.freeOrPaid);
+    return weighted([
+      { value: power(product), weight: 0.4 },
+      { value: safety(product), weight: 0.28 },
+      { value: !hasPricing ? null : price <= 0 ? 100 : Math.max(18, 100 - price * 2.4), weight: 0.32 }
+    ]);
+  };
+
+  const overall = product => {
+    const scores = [safety(product), power(product), value(product), stability(product)].filter(Number.isFinite);
+    return scores.length ? clamp(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null;
+  };
+
+  const coverage = product => [
     product.name,
-    normalizeList(product.platform).length ? product.platform : '',
+    list(product.platform).length ? product.platform : '',
     product.cheatType,
     product.keySystem,
     product.freeOrPaid,
@@ -1500,182 +1537,328 @@ function computeSmartRanking() {
     product.trustLevel,
     product.status,
     Number.isFinite(product.sunc) ? product.sunc : '',
-    normalizeList(product.pricingOptions).length ? product.pricingOptions : '',
-    normalizeList(product.tags).length ? product.tags : '',
-    normalizeList(product.pros).length ? product.pros : '',
-    normalizeList(product.cons).length ? product.cons : ''
-  ].filter(hasValue).length;
-  const confidenceLabel = product => {
-    const coverage = metadataCoverage(product);
-    if (coverage >= 10) return 'High';
-    if (coverage >= 7) return 'Medium';
+    list(product.pricingOptions).length ? product.pricingOptions : '',
+    list(product.tags).length ? product.tags : '',
+    list(product.pros).length ? product.pros : '',
+    list(product.cons).length ? product.cons : ''
+  ].filter(has).length;
+
+  const confidence = product => {
+    const score = coverage(product);
+    if (score >= 10) return 'High';
+    if (score >= 7) return 'Medium';
     return 'Low';
   };
-  const reasonList = (...items) => items.filter(Boolean).slice(0, 3);
 
-  const safetyScore = product => {
-    const trust = mapValue(product.trustLevel, trustScoreMap);
-    const stability = mapValue(product.stability, stabilityScoreLabelMap);
-    const risk = hasValue(product.status) || hasValue(product.trustLevel) ? (10 - detectionRiskScore(product)) * 10 : null;
-    const parts = [
-      trust === null ? null : { value: trust, weight: 0.52 },
-      stability === null ? null : { value: stability, weight: 0.28 },
-      risk === null ? null : { value: risk, weight: 0.2 }
-    ].filter(Boolean);
-    if (!parts.length) return null;
-    const weight = parts.reduce((sum, part) => sum + part.weight, 0);
-    return clampScore(parts.reduce((sum, part) => sum + (part.value * part.weight), 0) / weight);
-  };
-  const stabilityScore = product => mapValue(product.stability, stabilityScoreLabelMap);
-  const suncScore = product => Number.isFinite(product.sunc) ? clampScore(product.sunc) : null;
-  const powerScore = product => {
-    const sunc = suncScore(product);
-    const features = normalizeList(product.features).length ? Math.min(100, normalizeList(product.features).length * 14) : null;
-    const type = hasValue(product.cheatType) ? (String(product.cheatType).toLowerCase() === 'internal' ? 92 : 72) : null;
-    const parts = [
-      sunc === null ? null : { value: sunc, weight: 0.65 },
-      features === null ? null : { value: features, weight: 0.2 },
-      type === null ? null : { value: type, weight: 0.15 }
-    ].filter(Boolean);
-    if (!parts.length) return null;
-    const weight = parts.reduce((sum, part) => sum + part.weight, 0);
-    return clampScore(parts.reduce((sum, part) => sum + (part.value * part.weight), 0) / weight);
-  };
-  const valueScore = product => {
-    const safety = safetyScore(product);
-    const power = powerScore(product);
-    const price = estimatedPriceValue(product);
-    const hasPricing = normalizeList(product.pricingOptions).length || hasValue(product.freeOrPaid);
-    const normalizedPrice = !hasPricing ? null : price <= 0 ? 100 : Math.max(18, 100 - (price * 2.4));
-    const parts = [
-      power === null ? null : { value: power, weight: 0.4 },
-      safety === null ? null : { value: safety, weight: 0.28 },
-      normalizedPrice === null ? null : { value: normalizedPrice, weight: 0.32 }
-    ].filter(Boolean);
-    if (!parts.length) return null;
-    const weight = parts.reduce((sum, part) => sum + part.weight, 0);
-    return clampScore(parts.reduce((sum, part) => sum + (part.value * part.weight), 0) / weight);
-  };
-  const overallScore = product => {
-    const scores = [safetyScore(product), powerScore(product), valueScore(product), stabilityScore(product)].filter(Number.isFinite);
-    return scores.length ? clampScore(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null;
-  };
-  const riskScoreForRanking = product => hasValue(product.status) || hasValue(product.trustLevel) ? detectionRiskScore(product) : null;
+  const risk = product => (has(product.status) || has(product.trustLevel) ? detectionRiskScore(product) : null);
 
-  const buildEntry = (id, title, product, score, why) => ({
-    id,
-    title,
-    executor: product || null,
-    score: formatScore(score),
-    riskLevel: product && (hasValue(product.status) || hasValue(product.trustLevel)) ? detectionRiskLabel(product) : 'Unknown',
-    platformOrType: product ? formatPlatformOrType(product) : 'Unknown',
-    confidence: product ? confidenceLabel(product) : 'Low',
-    why: why && why.length ? why : ['Unknown']
+  return Object.freeze({ clamp, list, has, safety, power, value, stability, sunc, overall, coverage, confidence, risk });
+})();
+
+function getExecutorSignals(product) {
+  const signals = [];
+  if (Number.isFinite(product.sunc)) signals.push(`sUNC ${product.sunc}%`);
+  if (ExecutorScoring.has(product.trustLevel) && product.trustLevel !== 'Unknown') signals.push(`${product.trustLevel} trust`);
+  if (ExecutorScoring.has(product.stability) && product.stability !== 'Unknown') signals.push(product.stability);
+
+  const liveStatus = getWeaoStatusLabel(product.weaoStatus);
+  if (liveStatus !== 'Unknown') signals.push(`Live: ${liveStatus}`);
+  else if (ExecutorScoring.has(product.status) && product.status !== 'Unknown') signals.push(product.status);
+
+  if (/keyless/i.test(product.keySystem || '')) signals.push('Keyless');
+  if (product.freeOrPaid === 'free') signals.push('Free');
+  else if (product.freeOrPaid === 'both') signals.push('Free tier');
+
+  const features = ExecutorScoring.list(product.features);
+  if (features.length) signals.push(`${features.length} feature${features.length === 1 ? '' : 's'}`);
+
+  return signals;
+}
+
+const SMART_RANKING_SCOPES = [
+  { id: 'all', label: 'All platforms', match: () => true },
+  { id: 'windows', label: 'Windows', match: product => (product.platform || []).some(item => /windows/i.test(item)) },
+  { id: 'mobile', label: 'Mobile', match: product => (product.platform || []).some(item => /android|ios/i.test(item)) },
+  { id: 'macos', label: 'macOS', match: product => (product.platform || []).some(item => /mac/i.test(item)) }
+];
+
+const SMART_RANKING_CATEGORIES = [
+  {
+    id: 'bestOverall',
+    title: 'Best Overall',
+    blurb: 'Averaged across safety, capability, value, and stability',
+    filter: () => true,
+    score: product => ExecutorScoring.overall(product)
+  },
+  {
+    id: 'safest',
+    title: 'Safest Right Now',
+    blurb: 'Weighted toward trust level, then stability and detection risk',
+    filter: () => true,
+    score: product => ExecutorScoring.safety(product)
+  },
+  {
+    id: 'bestFree',
+    title: 'Best Free Option',
+    blurb: 'Best capability-per-cost among executors with a free tier',
+    filter: product => ['free', 'both'].includes(String(product.freeOrPaid || '').toLowerCase()),
+    score: product => ExecutorScoring.value(product)
+  },
+  {
+    id: 'bestPaid',
+    title: 'Best Paid Pick',
+    blurb: 'Highest overall score among executors with no free tier',
+    filter: product => String(product.freeOrPaid || '').toLowerCase() === 'paid',
+    score: product => ExecutorScoring.overall(product)
+  },
+  {
+    id: 'bestKeyless',
+    title: 'Best Keyless',
+    blurb: 'Top overall score among executors with no key system',
+    filter: product => /keyless/i.test(product.keySystem || ''),
+    score: product => ExecutorScoring.overall(product)
+  },
+  {
+    id: 'mostStable',
+    title: 'Most Stable',
+    blurb: 'Ranked purely on the listed stability rating',
+    filter: product => Number.isFinite(ExecutorScoring.stability(product)),
+    score: product => ExecutorScoring.stability(product)
+  },
+  {
+    id: 'mostPowerful',
+    title: 'Most Powerful',
+    blurb: 'Weighted toward sUNC coverage, then features and execution type',
+    filter: product => Number.isFinite(ExecutorScoring.power(product)),
+    score: product => ExecutorScoring.power(product)
+  },
+  {
+    id: 'highestRisk',
+    title: 'Highest Risk',
+    blurb: 'Listed here so you can avoid them, not pick them',
+    filter: product => Number.isFinite(ExecutorScoring.risk(product)),
+    score: product => ExecutorScoring.risk(product) * 10,
+    invertScoreLabel: true
+  }
+];
+
+const SMART_RANKING_SCOPE_KEY = 'xyrex_ranking_scope';
+let smartRankingScope = 'all';
+
+function computeSmartRanking() {
+  const scope = SMART_RANKING_SCOPES.find(item => item.id === smartRankingScope) || SMART_RANKING_SCOPES[0];
+  const pool = products.filter(scope.match);
+
+  const categories = SMART_RANKING_CATEGORIES.map(category => {
+    const ranked = pool
+      .filter(category.filter)
+      .map(product => ({ product, score: category.score(product) }))
+      .filter(item => Number.isFinite(item.score))
+      .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name))
+      .slice(0, 3);
+
+    return {
+      id: category.id,
+      title: category.title,
+      blurb: category.blurb,
+      invertScoreLabel: Boolean(category.invertScoreLabel),
+      entries: ranked.map(item => ({
+        product: item.product,
+        score: ExecutorScoring.clamp(item.score),
+        confidence: ExecutorScoring.confidence(item.product),
+        signals: getExecutorSignals(item.product),
+        breakdown: {
+          Safety: ExecutorScoring.safety(item.product),
+          Power: ExecutorScoring.power(item.product),
+          Value: ExecutorScoring.value(item.product)
+        }
+      }))
+    };
   });
 
-  const pickTop = (id, title, filterFn, scoreFn, whyBuilder) => {
-    const scored = products
-      .filter(filterFn)
-      .map(product => ({ product, score: scoreFn(product) }))
-      .filter(item => Number.isFinite(item.score))
-      .sort((a, b) => b.score - a.score);
-    const winner = scored[0];
-    if (!winner) return buildEntry(id, title, null, null, ['Unknown']);
-    return buildEntry(id, title, winner.product, winner.score, whyBuilder(winner.product));
-  };
+  const leaderboard = pool
+    .map(product => ({ product, score: ExecutorScoring.overall(product) }))
+    .filter(item => Number.isFinite(item.score))
+    .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name))
+    .slice(0, 10);
 
-  const isFree = product => ['free', 'both'].includes(String(product.freeOrPaid || '').toLowerCase());
-  const isKeyless = product => String(product.keySystem || '').toLowerCase() === 'keyless';
-  const isTrending = product => normalizeList(product.tags).some(tag => tag.toLowerCase() === 'trending');
-
-  const categories = [
-    pickTop('bestOverall', 'Best Overall', () => true, overallScore, p => reasonList(
-      'balanced safety, stability, value, and capability metadata',
-      p.stability ? `listed stability: ${p.stability}` : '',
-      Number.isFinite(p.sunc) ? `sUNC metadata: ${p.sunc}` : ''
-    )),
-    pickTop('safest', 'Safest Right Now', () => true, safetyScore, p => reasonList(
-      p.trustLevel ? `trust level: ${p.trustLevel}` : '',
-      p.status ? `status: ${p.status}` : '',
-      p.stability ? `stability: ${p.stability}` : ''
-    )),
-    pickTop('bestFree', 'Best Free Option', isFree, valueScore, p => reasonList(
-      'free option available',
-      p.stability ? `stability: ${p.stability}` : '',
-      normalizeList(p.pricingOptions).length ? `pricing metadata: ${normalizeList(p.pricingOptions).join(', ')}` : ''
-    )),
-    pickTop('bestKeyless', 'Best Keyless', isKeyless, overallScore, p => reasonList(
-      'keyless access listed',
-      p.stability ? `stability: ${p.stability}` : '',
-      p.trustLevel ? `trust level: ${p.trustLevel}` : ''
-    )),
-    pickTop('mostStable', 'Most Stable', product => Number.isFinite(stabilityScore(product)), stabilityScore, p => reasonList(
-      p.stability ? `listed stability: ${p.stability}` : '',
-      p.status ? `status: ${p.status}` : '',
-      p.trustLevel ? `trust level: ${p.trustLevel}` : ''
-    )),
-    pickTop('highestSunc', 'Highest sUNC', product => Number.isFinite(product.sunc), suncScore, p => reasonList(
-      Number.isFinite(p.sunc) ? `sUNC metadata: ${p.sunc}` : '',
-      p.cheatType ? `type: ${p.cheatType}` : '',
-      normalizeList(p.features).length ? `features listed: ${normalizeList(p.features).join(', ')}` : ''
-    )),
-    pickTop('trendingRisky', 'Trending but Risky', product => isTrending(product) && Number.isFinite(riskScoreForRanking(product)), product => riskScoreForRanking(product) * 10, p => reasonList(
-      'trending tag listed',
-      p.trustLevel ? `trust level: ${p.trustLevel}` : '',
-      p.status ? `status: ${p.status}` : ''
-    ))
-  ];
+  const winCounts = new Map();
+  categories.forEach(category => {
+    const winner = category.entries[0];
+    if (!winner || category.invertScoreLabel) return;
+    winCounts.set(winner.product.name, (winCounts.get(winner.product.name) || 0) + 1);
+  });
+  const scoredCategoryCount = categories.filter(category => !category.invertScoreLabel && category.entries.length).length;
+  const [dominantName, dominantWins] = [...winCounts.entries()].sort((a, b) => b[1] - a[1])[0] || [];
 
   return {
-    monthLabel: new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
-    categories
+    scopeLabel: scope.label,
+    poolSize: pool.length,
+    categories,
+    leaderboard,
+    dominance: dominantWins >= 3 ? { name: dominantName, wins: dominantWins, total: scoredCategoryCount } : null
   };
+}
+
+function renderRankingLeaderboard(leaderboard) {
+  if (!leaderboard.length) return '';
+  return `
+    <section class="ranking-leaderboard" aria-label="Overall executor leaderboard">
+      <div class="ranking-leaderboard-head">
+        <h4>Overall leaderboard</h4>
+        <span>Top ${leaderboard.length} by combined safety, capability, value, and stability</span>
+      </div>
+      <ol class="ranking-leaderboard-list">
+        ${leaderboard.map((entry, index) => `
+          <li>
+            <button type="button" data-ranking-executor="${escapeHtml(entry.product.name)}">
+              <span class="ranking-leaderboard-rank">${index + 1}</span>
+              <span class="ranking-leaderboard-name">${escapeHtml(entry.product.name)}</span>
+              <span class="ranking-leaderboard-signals">${getExecutorSignals(entry.product).slice(0, 3).map(signal => `<span>${escapeHtml(signal)}</span>`).join('')}</span>
+              <span class="ranking-leaderboard-track"><span style="width:${entry.score}%"></span></span>
+              <strong>${entry.score}</strong>
+            </button>
+          </li>`).join('')}
+      </ol>
+    </section>`;
+}
+
+function renderSmartRankingCard(category) {
+  if (!category.entries.length) {
+    return `
+      <article class="smart-ranking-card is-empty">
+        <div class="smart-ranking-card-top"><span class="smart-ranking-card-title">${escapeHtml(category.title)}</span></div>
+        <p class="smart-ranking-blurb">${escapeHtml(category.blurb)}</p>
+        <p class="smart-ranking-empty">No listed executor has the data needed for this ranking in the current scope</p>
+      </article>`;
+  }
+
+  const [winner, ...runnersUp] = category.entries;
+  const scoreLabel = category.invertScoreLabel ? 'Risk' : 'Score';
+  const scoreValue = category.invertScoreLabel ? `${Math.round(winner.score / 10)}/10` : `${winner.score}/100`;
+  const bars = Object.entries(winner.breakdown)
+    .filter(([, value]) => Number.isFinite(value))
+    .map(([label, value]) => `
+      <div class="smart-ranking-bar">
+        <span>${escapeHtml(label)}</span>
+        <span class="smart-ranking-bar-track"><span class="smart-ranking-bar-fill" style="width:${value}%"></span></span>
+        <strong>${value}</strong>
+      </div>`).join('');
+
+  return `
+    <article class="smart-ranking-card${category.invertScoreLabel ? ' is-caution' : ''}">
+      <div class="smart-ranking-card-top">
+        <span class="smart-ranking-card-title">${escapeHtml(category.title)}</span>
+        <span class="smart-ranking-confidence">${escapeHtml(winner.confidence)} confidence</span>
+      </div>
+      <p class="smart-ranking-blurb">${escapeHtml(category.blurb)}</p>
+
+      <button class="smart-ranking-winner" type="button" data-ranking-executor="${escapeHtml(winner.product.name)}">
+        <span class="smart-ranking-rank">1</span>
+        <span class="smart-ranking-executor">${escapeHtml(winner.product.name)}</span>
+        <span class="smart-ranking-score"><small>${escapeHtml(scoreLabel)}</small>${escapeHtml(scoreValue)}</span>
+      </button>
+
+      ${winner.signals.length ? `<div class="smart-ranking-signals">${winner.signals.map(signal => `<span>${escapeHtml(signal)}</span>`).join('')}</div>` : ''}
+      ${bars ? `<div class="smart-ranking-bars">${bars}</div>` : ''}
+
+      ${runnersUp.length ? `
+        <div class="smart-ranking-runners">
+          <span class="smart-ranking-runners-label">Runners-up</span>
+          ${runnersUp.map((entry, index) => `
+            <button class="smart-ranking-runner" type="button" data-ranking-executor="${escapeHtml(entry.product.name)}">
+              <span class="smart-ranking-rank">${index + 2}</span>
+              <span>${escapeHtml(entry.product.name)}</span>
+              <strong>${category.invertScoreLabel ? `${Math.round(entry.score / 10)}/10` : entry.score}</strong>
+            </button>`).join('')}
+        </div>` : ''}
+    </article>`;
 }
 
 function renderSmartRankings() {
   const wrap = qs('#smartRankingSections');
   if (!wrap) return;
   const ranking = computeSmartRanking();
-  if (!ranking.categories.length) {
-    wrap.innerHTML = '';
-    return;
-  }
 
   wrap.innerHTML = `
     <div class="smart-ranking-dashboard" aria-label="Smart rankings dashboard">
       <div class="smart-ranking-dashboard-head">
-        <p class="smart-ranking-kicker">Updated for ${escapeHtml(ranking.monthLabel)}</p>
-        <p class="smart-ranking-intro">Concise rankings generated from the executor metadata already listed on this page. Missing fields stay marked as Unknown.</p>
+        <p class="smart-ranking-intro">Rankings are recomputed from the executor metadata on this site every time the page loads. Executors missing a field are left out of the rankings that need it rather than guessed at.</p>
+        <div class="smart-ranking-scopes" role="group" aria-label="Ranking platform scope">
+          ${SMART_RANKING_SCOPES.map(scope => `<button class="script-filter-chip ${scope.id === smartRankingScope ? 'is-active' : ''}" type="button" data-ranking-scope="${scope.id}" aria-pressed="${scope.id === smartRankingScope}">${escapeHtml(scope.label)}</button>`).join('')}
+        </div>
+        <p class="smart-ranking-kicker">Scored across ${ranking.poolSize} executor${ranking.poolSize === 1 ? '' : 's'} matching ${escapeHtml(ranking.scopeLabel)}</p>
+        ${ranking.dominance ? `<p class="smart-ranking-dominance">${escapeHtml(ranking.dominance.name)} currently tops ${ranking.dominance.wins} of the ${ranking.dominance.total} scored categories below, so the runners-up are where the alternatives are</p>` : ''}
       </div>
+      ${renderRankingLeaderboard(ranking.leaderboard)}
       <div class="smart-ranking-grid">
-        ${ranking.categories.map(entry => `
-          <article class="smart-ranking-card">
-            <div class="smart-ranking-card-top">
-              <span class="smart-ranking-card-title">${escapeHtml(entry.title)}</span>
-              <span class="smart-ranking-confidence">${escapeHtml(entry.confidence || 'Unknown')}</span>
-            </div>
-            <strong class="smart-ranking-executor">${escapeHtml(entry.executor?.name || 'Unknown')}</strong>
-            <div class="smart-ranking-metrics">
-              <div><span>Score</span><strong>${entry.score === null ? 'Unknown' : `${escapeHtml(String(entry.score))}/100`}</strong></div>
-              <div><span>Risk</span><strong>${escapeHtml(entry.riskLevel || 'Unknown')}</strong></div>
-              <div><span>Platform / Type</span><strong>${escapeHtml(entry.platformOrType || 'Unknown')}</strong></div>
-            </div>
-            <div class="smart-ranking-why">
-              <span>Why ranked here</span>
-              <ul>
-                ${entry.why.map(reason => `<li>${escapeHtml(reason || 'Unknown')}</li>`).join('')}
-              </ul>
-            </div>
-          </article>
-        `).join('')}
+        ${ranking.categories.map(renderSmartRankingCard).join('')}
       </div>
-    </div>
-  `;
+    </div>`;
+
+  if (wrap.dataset.rankingsBound === 'true') return;
+  wrap.addEventListener('click', event => {
+    const scopeButton = event.target.closest('[data-ranking-scope]');
+    if (scopeButton) {
+      smartRankingScope = scopeButton.getAttribute('data-ranking-scope') || 'all';
+      localStorage.setItem(SMART_RANKING_SCOPE_KEY, smartRankingScope);
+      renderSmartRankings();
+      return;
+    }
+    const executorButton = event.target.closest('[data-ranking-executor]');
+    if (!executorButton) return;
+    const product = products.find(item => item.name === executorButton.getAttribute('data-ranking-executor'));
+    if (product) openModal(product);
+  });
+  wrap.dataset.rankingsBound = 'true';
 }
 
 let comparisonSelection = [];
 let comparisonSearchTerm = '';
 let comparisonFilter = 'all';
+let comparisonShowAllRows = false;
+
+const COMPARISON_MAX = 3;
+
+function getComparisonRows(selectedProducts) {
+  const stabilityValues = selectedProducts.map(item => stabilityScoreMap[item.stability] || 0);
+  const riskValues = selectedProducts.map(item => detectionRiskScore(item));
+  const priceValues = selectedProducts.map(item => estimatedPriceValue(item));
+
+  return [
+    {
+      label: 'Overall score',
+      values: selectedProducts.map(item => ExecutorScoring.overall(item) ?? -1),
+      display: selectedProducts.map(item => { const score = ExecutorScoring.overall(item); return Number.isFinite(score) ? `${score}/100` : 'Unknown'; }),
+      best: 'max'
+    },
+    {
+      label: 'Live status',
+      values: selectedProducts.map(item => (getWeaoStatusState(item.weaoStatus) === 'up' ? 1 : 0)),
+      display: selectedProducts.map(item => getWeaoStatusLabel(item.weaoStatus)),
+      best: null
+    },
+    { label: 'sUNC', values: selectedProducts.map(item => (Number.isFinite(item.sunc) ? item.sunc : -1)), display: selectedProducts.map(item => (Number.isFinite(item.sunc) ? `${item.sunc}%` : 'None')), best: 'max' },
+    { label: 'Stability', values: stabilityValues, display: selectedProducts.map(item => item.stability || 'Unknown'), best: 'max' },
+    { label: 'Detection Risk', values: riskValues, display: selectedProducts.map((item, index) => `${detectionRiskLabel(item)} (${riskValues[index]}/10)`), best: 'min' },
+    { label: 'Price', values: priceValues, display: selectedProducts.map(item => cleanMalformedPriceText(item.pricingOptions?.[0] || item.freeOrPaid || 'Unknown')), best: 'min' },
+    { label: 'Platform', values: selectedProducts.map(item => (item.platform || []).length), display: selectedProducts.map(item => (item.platform || []).join(', ') || 'Unknown'), best: 'max' },
+    { label: 'Key System', values: selectedProducts.map(item => (/keyless/i.test(item.keySystem || '') ? 1 : 0)), display: selectedProducts.map(item => item.keySystem || 'Unknown'), best: 'max' },
+    { label: 'Cheat Type', values: selectedProducts.map(item => (/internal/i.test(item.cheatType || '') ? 1 : 0)), display: selectedProducts.map(item => item.cheatType || 'Unknown'), best: null },
+    { label: 'Listed Status', values: selectedProducts.map(item => (/undetected|working/i.test(item.status || '') ? 1 : 0)), display: selectedProducts.map(item => item.status || 'Unknown'), best: null },
+    { label: 'Trust Level', values: selectedProducts.map(item => ({ high: 3, trusted: 3, medium: 2, caution: 2, low: 0, risky: 0 }[String(item.trustLevel || '').toLowerCase()] ?? 1)), display: selectedProducts.map(item => item.trustLevel || 'Unknown'), best: 'max' },
+    { label: 'Features', values: selectedProducts.map(item => (item.features || []).length), display: selectedProducts.map(item => (item.features || []).join(', ') || 'None listed'), best: 'max' },
+    { label: 'Pros', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.pros || []).slice(0, 3).join(', ') || 'None listed'), best: null },
+    { label: 'Cons', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.cons || []).slice(0, 3).join(', ') || 'None listed'), best: null }
+  ];
+}
+
+function buildComparisonMarkdown(selectedProducts, rows) {
+  const header = `| Metric | ${selectedProducts.map(item => item.name).join(' | ')} |`;
+  const divider = `| --- | ${selectedProducts.map(() => '---').join(' | ')} |`;
+  const body = rows.map(row => `| ${row.label} | ${row.display.join(' | ')} |`).join('\n');
+  return `Xyrex executor comparison\n\n${header}\n${divider}\n${body}\n\nCompare these yourself: ${window.location.origin}/scripthub?compare=${encodeURIComponent(selectedProducts.map(item => item.name).join(','))}`;
+}
 
 function renderComparisonSystem() {
   const selector = qs('#comparisonSelector');
@@ -1723,11 +1906,16 @@ function renderComparisonSystem() {
     if (comparisonFilter === 'highsunc') return Number.isFinite(product.sunc) && product.sunc >= 90;
     return true;
   };
+
+  const isFull = comparisonSelection.length >= COMPARISON_MAX;
   const sorted = [...products].filter(filterMatch).sort((a, b) => a.name.localeCompare(b.name));
-  selector.innerHTML = sorted.map(product => {
-    const selected = comparisonSelection.includes(product.name);
-    return `<button type="button" class="compare-pick ${selected ? 'is-active' : ''}" data-compare-name="${escapeHtml(product.name)}">${escapeHtml(product.name)}</button>`;
-  }).join('');
+  selector.innerHTML = sorted.length
+    ? sorted.map(product => {
+      const selected = comparisonSelection.includes(product.name);
+      const sunc = Number.isFinite(product.sunc) ? `<span class="compare-pick-sunc">${product.sunc}%</span>` : '';
+      return `<button type="button" class="compare-pick ${selected ? 'is-active' : ''}" data-compare-name="${escapeHtml(product.name)}" aria-pressed="${selected}"${!selected && isFull ? ' disabled' : ''}>${escapeHtml(product.name)}${sunc}</button>`;
+    }).join('')
+    : '<p class="comparison-selector-empty">No executors match that search or filter</p>';
 
   selector.querySelectorAll('[data-compare-name]').forEach(button => {
     button.addEventListener('click', () => {
@@ -1735,15 +1923,17 @@ function renderComparisonSystem() {
       if (!name) return;
       if (comparisonSelection.includes(name)) {
         comparisonSelection = comparisonSelection.filter(item => item !== name);
-      } else if (comparisonSelection.length < 3) {
+      } else if (comparisonSelection.length < COMPARISON_MAX) {
         comparisonSelection = [...comparisonSelection, name];
       }
       renderComparisonSystem();
     });
   });
+
+  const slotText = `${comparisonSelection.length} of ${COMPARISON_MAX} selected`;
   selectedRow.innerHTML = comparisonSelection.length
-    ? `<span class="comparison-selected-label">Selected</span>${comparisonSelection.map(name => `<button class="comparison-selected-chip" type="button" data-compare-remove="${escapeHtml(name)}" title="Remove ${escapeHtml(name)}">${escapeHtml(name)}<span aria-hidden="true">✕</span></button>`).join('')}`
-    : '<span class="comparison-selected-label">Select 2 to 3 executors below</span>';
+    ? `<span class="comparison-selected-label">${escapeHtml(slotText)}</span>${comparisonSelection.map(name => `<button class="comparison-selected-chip" type="button" data-compare-remove="${escapeHtml(name)}" title="Remove ${escapeHtml(name)}">${escapeHtml(name)}<span aria-hidden="true">✕</span></button>`).join('')}<button class="comparison-clear-btn" type="button" data-compare-clear="true">Clear all</button>`
+    : '<span class="comparison-selected-label">Pick 2 or 3 executors below to compare them</span>';
 
   selectedRow.querySelectorAll('[data-compare-remove]').forEach(button => {
     button.addEventListener('click', () => {
@@ -1751,11 +1941,15 @@ function renderComparisonSystem() {
       renderComparisonSystem();
     });
   });
+  selectedRow.querySelector('[data-compare-clear]')?.addEventListener('click', () => {
+    comparisonSelection = [];
+    renderComparisonSystem();
+  });
 
   const selectedProducts = comparisonSelection
     .map(name => products.find(item => item.name === name))
     .filter(Boolean)
-    .slice(0, 3);
+    .slice(0, COMPARISON_MAX);
 
   if (selectedProducts.length < 2) {
     tableWrap.hidden = true;
@@ -1767,11 +1961,10 @@ function renderComparisonSystem() {
     return;
   }
 
-  const suncValues = selectedProducts.map(item => Number.isFinite(item.sunc) ? item.sunc : -1);
-  const stabilityValues = selectedProducts.map(item => stabilityScoreMap[item.stability] || 0);
-  const riskValues = selectedProducts.map(item => detectionRiskScore(item));
-  const priceValues = selectedProducts.map(item => estimatedPriceValue(item));
-  const platformValues = selectedProducts.map(item => (item.platform || []).length);
+  const allRows = getComparisonRows(selectedProducts);
+  const isUninformative = row => row.display.every(value => /^(unknown|none|none listed)$/i.test(String(value).trim()));
+  const hiddenRows = allRows.filter(isUninformative);
+  const rows = comparisonShowAllRows ? allRows : allRows.filter(row => !isUninformative(row));
 
   const winnerIndexes = values => {
     const valid = values.filter(Number.isFinite);
@@ -1787,22 +1980,13 @@ function renderComparisonSystem() {
   };
 
   const cell = (value, best) => `<td class="${best ? 'is-best' : ''}">${escapeHtml(String(value))}${best ? '<span class="best-label">Best</span>' : ''}</td>`;
-  const rows = [
-    { label: 'sUNC', values: selectedProducts.map(item => Number.isFinite(item.sunc) ? item.sunc : -1), display: selectedProducts.map(item => Number.isFinite(item.sunc) ? `${item.sunc}%` : 'None'), best: 'max' },
-    { label: 'Stability', values: stabilityValues, display: selectedProducts.map(item => item.stability), best: 'max' },
-    { label: 'Detection Risk', values: riskValues, display: selectedProducts.map((item, idx) => `${detectionRiskLabel(item)} (${riskValues[idx]}/10)`), best: 'min' },
-    { label: 'Price', values: priceValues, display: selectedProducts.map(item => item.pricingOptions?.[0] || item.freeOrPaid), best: 'min' },
-    { label: 'Platform', values: platformValues, display: selectedProducts.map(item => (item.platform || []).join(', ')), best: 'max' },
-    { label: 'Key System', values: selectedProducts.map(item => /keyless/i.test(item.keySystem || '') ? 1 : 0), display: selectedProducts.map(item => item.keySystem || 'Unknown'), best: 'max' },
-    { label: 'Cheat Type', values: selectedProducts.map(item => /internal/i.test(item.cheatType || '') ? 1 : 0), display: selectedProducts.map(item => item.cheatType || 'Unknown'), best: null },
-    { label: 'Status', values: selectedProducts.map(item => /undetected|working/i.test(item.status || '') ? 1 : 0), display: selectedProducts.map(item => item.status || 'Unknown'), best: null },
-    { label: 'Trust Level', values: selectedProducts.map(item => ({ high: 3, trusted: 3, medium: 2, caution: 2, low: 0, risky: 0 }[String(item.trustLevel || '').toLowerCase()] ?? 1)), display: selectedProducts.map(item => item.trustLevel || 'Unknown'), best: 'max' },
-    { label: 'Features', values: selectedProducts.map(item => (item.features || []).length), display: selectedProducts.map(item => (item.features || []).join(', ') || 'None listed'), best: 'max' },
-    { label: 'Pros', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.pros || []).slice(0, 3).join(', ') || 'None listed'), best: null },
-    { label: 'Cons', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.cons || []).slice(0, 3).join(', ') || 'None listed'), best: null },
-    { label: 'Best For', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => item.tags?.[0] || 'General use'), best: null },
-    { label: 'Avoid If', values: selectedProducts.map(() => 0), display: selectedProducts.map(item => (item.cons || [])[0] || 'You need maximum trust certainty'), best: null }
-  ];
+  const winsPerProduct = selectedProducts.map(() => 0);
+
+  const bodyRows = rows.map(row => {
+    const winners = row.best === 'max' ? winnerIndexes(row.values) : row.best === 'min' ? winnerIndexesMin(row.values) : [];
+    winners.forEach(index => { winsPerProduct[index] += 1; });
+    return `<tr><th>${escapeHtml(row.label)}</th>${row.display.map((value, index) => cell(value, winners.includes(index))).join('')}</tr>`;
+  }).join('');
 
   table.innerHTML = `
     <thead>
@@ -1811,21 +1995,80 @@ function renderComparisonSystem() {
         ${selectedProducts.map(item => `<th>${escapeHtml(item.name)}</th>`).join('')}
       </tr>
     </thead>
-    <tbody>
-      ${rows.map(row => {
-        const winners = row.best === 'max' ? winnerIndexes(row.values) : row.best === 'min' ? winnerIndexesMin(row.values) : [];
-        return `<tr><th>${escapeHtml(row.label)}</th>${row.display.map((value, idx) => cell(value, winners.includes(idx))).join('')}</tr>`;
-      }).join('')}
-    </tbody>
-  `;
-  const recommendationTotals = selectedProducts.map(item => (Number.isFinite(item.sunc) ? item.sunc : 55) + (stabilityScoreMap[item.stability] || 0) + (100 - (detectionRiskScore(item) * 10)));
-  const leadIndex = recommendationTotals.findIndex(score => score === Math.max(...recommendationTotals));
+    <tbody>${bodyRows}</tbody>`;
+
+  const overallScores = selectedProducts.map(item => ExecutorScoring.overall(item));
+  const scored = overallScores.filter(Number.isFinite);
+  const leadIndex = scored.length
+    ? overallScores.indexOf(Math.max(...scored))
+    : winsPerProduct.indexOf(Math.max(...winsPerProduct));
+  const leader = selectedProducts[leadIndex];
+  const leaderScore = overallScores[leadIndex];
+  const isTie = scored.length > 1 && scored.filter(score => score === Math.max(...scored)).length > 1;
+
   winnerSummary.hidden = false;
-  winnerSummary.innerHTML = `<strong>Winner summary:</strong> ${escapeHtml(selectedProducts[leadIndex].name)} currently leads overall for this selection mix.`;
+  winnerSummary.innerHTML = `
+    <div class="comparison-winner-main">
+      <strong>${isTie ? 'Too close to call' : `${escapeHtml(leader.name)} leads this comparison`}</strong>
+      <span>${isTie
+        ? 'These executors score the same overall on the data listed here'
+        : `Overall score ${Number.isFinite(leaderScore) ? `${leaderScore}/100` : 'unavailable'}, winning ${winsPerProduct[leadIndex]} of ${rows.filter(row => row.best).length} scored metrics`}</span>
+    </div>
+    <div class="comparison-winner-actions">
+      ${hiddenRows.length ? `<button class="btn-ghost-outline" type="button" data-compare-toggle-rows="true">${comparisonShowAllRows ? 'Hide' : 'Show'} ${hiddenRows.length} unknown-only row${hiddenRows.length === 1 ? '' : 's'}</button>` : ''}
+      <button class="btn-ghost-outline" type="button" data-compare-copy="true">Copy comparison</button>
+      <button class="btn-ghost-outline" type="button" data-compare-link="true">Copy link</button>
+    </div>`;
+
+  winnerSummary.querySelector('[data-compare-toggle-rows]')?.addEventListener('click', () => {
+    comparisonShowAllRows = !comparisonShowAllRows;
+    renderComparisonSystem();
+  });
+  winnerSummary.querySelector('[data-compare-copy]')?.addEventListener('click', async () => {
+    const copied = await copyTextToClipboard(buildComparisonMarkdown(selectedProducts, allRows));
+    showToast(copied ? 'Comparison copied as a table' : 'Could not copy the comparison', copied ? 'positive' : 'warning');
+  });
+  winnerSummary.querySelector('[data-compare-link]')?.addEventListener('click', async () => {
+    const link = `${window.location.origin}/scripthub?compare=${encodeURIComponent(selectedProducts.map(item => item.name).join(','))}`;
+    const copied = await copyTextToClipboard(link);
+    showToast(copied ? 'Comparison link copied' : 'Could not copy the link', copied ? 'positive' : 'warning');
+  });
+
   verdictsWrap.hidden = false;
-  verdictsWrap.innerHTML = selectedProducts.map(item => `<article class="comparison-verdict-card"><h4>${escapeHtml(item.name)}</h4><p><strong>Verdict:</strong> ${escapeHtml((item.pros || [])[0] || 'Solid overall baseline.')}</p><p><strong>Watch-out:</strong> ${escapeHtml((item.cons || [])[0] || 'Review status and trust before use.')}</p></article>`).join('');
+  verdictsWrap.innerHTML = selectedProducts.map((item, index) => {
+    const signals = getExecutorSignals(item);
+    const strengths = rows.filter(row => {
+      const winners = row.best === 'max' ? winnerIndexes(row.values) : row.best === 'min' ? winnerIndexesMin(row.values) : [];
+      return winners.includes(index);
+    }).map(row => row.label);
+    return `
+      <article class="comparison-verdict-card">
+        <h4>${escapeHtml(item.name)}</h4>
+        ${signals.length ? `<div class="smart-ranking-signals">${signals.map(signal => `<span>${escapeHtml(signal)}</span>`).join('')}</div>` : ''}
+        <p><strong>Wins on:</strong> ${strengths.length ? escapeHtml(strengths.join(', ')) : 'No metric outright, it ties or trails on every scored row'}</p>
+        <p><strong>Watch-out:</strong> ${escapeHtml((item.cons || [])[0] || 'Review status and trust before use')}</p>
+      </article>`;
+  }).join('');
 
   tableWrap.hidden = false;
+}
+
+function applyComparisonFromQueryParam() {
+  if (!requestedComparison) return;
+  const names = requestedComparison.split(',').map(name => name.trim()).filter(Boolean);
+  const matched = names
+    .map(name => products.find(product => product.name.toLowerCase() === name.toLowerCase()))
+    .filter(Boolean)
+    .slice(0, COMPARISON_MAX)
+    .map(product => product.name);
+  if (matched.length < 2) return;
+
+  comparisonSelection = matched;
+  syncNavButtonsWithPage('scriptsPage');
+  setActivePage('scriptsPage');
+  syncSubtabButtons('comparisonPanel');
+  setActiveSubtab('comparisonPanel');
+  renderComparisonSystem();
 }
 
 const SCRIPT_FAVORITES_KEY = 'xyrex_script_favorites_v1';
@@ -2479,6 +2722,7 @@ function initScriptLibraryControls() {
 
 // Captured before the router rewrites the path, which drops the query string.
 const requestedScriptId = new URLSearchParams(window.location.search).get('script') || '';
+const requestedComparison = new URLSearchParams(window.location.search).get('compare') || '';
 
 function openScriptFromQueryParam() {
   const scriptId = requestedScriptId;
@@ -2555,6 +2799,7 @@ const assistantLoadingProfiles = Object.freeze({
 });
 let assistantContext = { lastIntent:null, lastExecutors:[], lastFilters:{}, lastQuestion:'', lastRecommendation:null, conversationFocus:null, turns:[] };
 let assistantReplyTarget = null;
+let assistantPanelRefresh = () => {};
 
 
 
@@ -3109,13 +3354,29 @@ function initExploitAssistant() {
     const actions = document.createElement('div');
     actions.className = 'assistant-actions';
 
+    const actionRow = document.createElement('div');
+    actionRow.className = 'assistant-action-row';
+
     const replyButton = document.createElement('button');
     replyButton.type = 'button';
     replyButton.className = 'assistant-reply-btn';
     replyButton.textContent = 'Reply';
     replyButton.setAttribute('aria-label', 'Reply directly to this assistant message');
     replyButton.addEventListener('click', () => setReplyTargetFromMessage(messageElement));
-    actions.appendChild(replyButton);
+    actionRow.appendChild(replyButton);
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'assistant-reply-btn';
+    copyButton.textContent = 'Copy';
+    copyButton.setAttribute('aria-label', 'Copy this assistant reply');
+    copyButton.addEventListener('click', async () => {
+      const text = messageElement.querySelector('.assistant-markdown, .assistant-message-content')?.textContent || '';
+      const copied = await copyTextToClipboard(text.trim());
+      showToast(copied ? 'Reply copied to clipboard' : 'Could not copy that reply', copied ? 'positive' : 'warning');
+    });
+    actionRow.appendChild(copyButton);
+    actions.appendChild(actionRow);
 
     const followUps = Array.isArray(apiReply?.followUps) ? apiReply.followUps.filter(Boolean).slice(0, 4) : [];
     if (followUps.length) {
@@ -3157,9 +3418,11 @@ function initExploitAssistant() {
 
     if (!consumeAiTokenForAssistant()) {
       appendMessage('bot', NO_ASSISTANT_TOKENS_MESSAGE, ['AI Tokens']);
+      assistantPanelRefresh();
       openNoAiTokensModal();
       return;
     }
+    assistantPanelRefresh();
 
     const activeReplyTarget = assistantReplyTarget;
     const displayMessage = activeReplyTarget
@@ -3229,20 +3492,86 @@ function initExploitAssistant() {
       }
       input.disabled = false;
       sendBtn.disabled = false;
+      assistantPanelRefresh();
       input.focus();
     }
   }
 
-  if (!messages.children.length) {
+  const starter = qs('#assistantStarter');
+  const tokenMeter = qs('#assistantTokenMeter');
+  const charCount = qs('#assistantCharCount');
+  const clearBtn = qs('#assistantClearBtn');
+
+  const refreshTokenMeter = () => {
+    if (!tokenMeter) return;
+    const summary = getAiTokenSummary();
+    tokenMeter.textContent = summary.available > 0
+      ? `${summary.available} AI token${summary.available === 1 ? '' : 's'} left today`
+      : 'No AI tokens left — they reset at midnight';
+    tokenMeter.classList.toggle('is-empty', summary.available <= 0);
+  };
+
+  const refreshCharCount = () => {
+    if (!charCount) return;
+    charCount.textContent = `${input.value.length} / ${input.maxLength}`;
+  };
+
+  const renderStarter = () => {
+    if (!starter) return;
+    const hasConversation = messages.querySelector('.assistant-user');
+    starter.hidden = Boolean(hasConversation);
+    if (hasConversation) return;
+    const prompts = [
+      'Which executors are safest for beginners?',
+      'What is the best free executor right now?',
+      'Compare Potassium and Xeno',
+      'Which executors work on mobile?',
+      'What is the difference between sUNC and UNC?',
+      'Show me keyless executors'
+    ];
+    starter.innerHTML = `
+      <p class="assistant-starter-title">Try one of these</p>
+      <div class="assistant-starter-chips">
+        ${prompts.map(prompt => `<button class="assistant-starter-chip" type="button" data-assistant-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`).join('')}
+      </div>`;
+  };
+
+  starter?.addEventListener('click', event => {
+    const chip = event.target.closest('[data-assistant-prompt]');
+    if (!chip) return;
+    submitAssistantMessage(chip.getAttribute('data-assistant-prompt') || '');
+  });
+
+  input.addEventListener('input', refreshCharCount);
+
+  clearBtn?.addEventListener('click', () => {
+    messages.innerHTML = '';
+    assistantContext = { lastIntent: null, lastExecutors: [], lastFilters: {}, lastQuestion: '', lastRecommendation: null, conversationFocus: null, turns: [] };
+    assistantReplyTarget = null;
+    refreshReplyBanner();
+    seedWelcomeMessage();
+    renderStarter();
+    showToast('Conversation cleared', 'info');
+  });
+
+  function seedWelcomeMessage() {
     const welcome = appendMessage('bot', 'Hello. I am your Exploit Assistant. Ask me about active executors, compatibility, platforms, pricing, risk, or terminology.', ['Local Data']);
     appendAssistantActions(welcome, { followUps: ['What can you do?', 'Compare sUNC and UNC?', 'Which executors are safest for beginners?'] }, '');
   }
+
+  if (!messages.children.length) seedWelcomeMessage();
 
   form.addEventListener('submit', event => {
     event.preventDefault();
     submitAssistantMessage(input.value);
   });
 
+  assistantPanelRefresh = () => {
+    refreshTokenMeter();
+    renderStarter();
+    refreshCharCount();
+  };
+  assistantPanelRefresh();
   refreshReplyBanner();
 }
 
@@ -4027,6 +4356,7 @@ function init() {
   });
 
   applyRoute(getInitialRoutePath(), true).finally(() => {
+    applyComparisonFromQueryParam();
     openScriptFromQueryParam();
     window.setTimeout(hideInitialLoadingOverlay, 1000);
   });

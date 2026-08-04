@@ -1,6 +1,30 @@
 # Changelog
 
-## 2026-08-04
+## 2026-08-04 (Scripts Hub: Smart Rankings, Comparison, Assistant)
+
+### Added
+- An overall leaderboard at the top of Smart Rankings listing the top 10 executors by combined score, with per-entry signal chips and score bars. The tab previously showed category winners but never an actual ranking.
+- Runners-up (ranks 2 and 3) on every ranking card, plus a safety/power/value breakdown for the winner.
+- Platform scope chips (All / Windows / Mobile / macOS) that recompute every ranking against that subset.
+- Click-through from any executor in Smart Rankings, the leaderboard, or a runner-up row to that executor's full profile modal.
+- A "Best Paid Pick" category scoped to executors with no free tier, and a note naming any executor that tops most categories so the runners-up are easier to find.
+- Comparison: a live WEAO status row, a "n of 3 selected" counter, disabled state on the picker once full, clear-all, sUNC values on picker chips, copy-as-markdown-table, and shareable `?compare=` links.
+- Comparison verdict cards now list which metrics each executor actually wins, plus its signal chips.
+- Exploit Assistant: a live AI token meter so the daily limit is visible before it runs out, six suggested prompts filling the previously dead starter element, a clear-chat button, a copy button on every reply, and an input character counter.
+
+### Changed
+- Extracted the safety/power/value/stability scoring out of `computeSmartRanking`'s closure into a shared `ExecutorScoring` engine. Smart Rankings and the comparison verdict now agree, instead of the comparison using its own formula that treated a missing sUNC as 55.
+- Ranking justifications list real signals (sUNC value, trust level, live status, key system, feature count) instead of templated text like "balanced safety, stability, value, and capability metadata".
+- Ranking cards no longer claim to be "Updated for <month>" when they are recomputed on every page load; they state the scope and pool size instead.
+
+### Fixed
+- Comparison rows where every selected executor reads Unknown are hidden behind a toggle rather than padding the table.
+- Assistant Reply and Copy buttons no longer sit at `opacity: 0` until hover, which reserved dead space in every reply and made them unreachable on touch devices.
+
+### Removed
+- The empty `#assistantStarter` element that CSS had been hiding with `display: none` since it was never populated.
+
+## 2026-08-04 (Scripts Hub: Script Library, Saved Scripts, Changelog)
 
 ### Added
 - Script Library search, filter chips (Favorites, Working, Keyless, Free, Mobile, Low sUNC), and sorting (Recommended, Recently updated, Name, Lowest sUNC needed), with live result counts.

@@ -2,6 +2,23 @@
 
 window.XYREX_CHANGELOG = [
   {
+    version: 'Rankings, Comparison, and Assistant',
+    date: '2026-08-04',
+    summary: 'The remaining Scripts Hub tabs were rebuilt on a single shared scoring engine.',
+    entries: [
+      { type: 'Added', text: 'An overall leaderboard in Smart Rankings, so the tab finally shows a ranking rather than one winner per category' },
+      { type: 'Added', text: 'Runners-up, a safety/power/value breakdown, and platform scope filters on every ranking card' },
+      { type: 'Added', text: 'Click any executor in Smart Rankings or the leaderboard to open its full profile' },
+      { type: 'Added', text: 'A Best Paid Pick category, so the free-tier leaders no longer sweep every board' },
+      { type: 'Added', text: 'Comparison now shows a live status row, a slot counter, clear-all, copy-as-table, and ?compare= links' },
+      { type: 'Added', text: 'The Exploit Assistant shows how many AI tokens you have left before you spend one, plus suggested prompts, clear chat, and copy reply' },
+      { type: 'Changed', text: 'Ranking reasons list real signals such as sUNC, trust, and live status instead of generic filler' },
+      { type: 'Changed', text: 'The comparison verdict now uses the same scoring engine as the rankings rather than its own formula' },
+      { type: 'Fixed', text: 'Comparison rows where every executor is Unknown are hidden behind a toggle instead of padding the table' },
+      { type: 'Fixed', text: 'Assistant Reply and Copy buttons are always visible, so they work on touch devices' }
+    ]
+  },
+  {
     version: 'Script Hub 2.0',
     date: '2026-08-04',
     summary: 'The Script Hub was rebuilt around search, filtering, and per-script detail pages.',

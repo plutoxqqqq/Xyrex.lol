@@ -116,7 +116,7 @@
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="shortcut icon" href="./favicon.ico" />
   <link rel="apple-touch-icon" sizes="180x180" href="./favicon.ico" />
-  <link rel="stylesheet" href="./style.css?v=2.1.0" />
+  <link rel="stylesheet" href="./style.css?v=2.2.0" />
   <link rel="stylesheet" href="./lore.css?v=1.0.0" />
 </head>
 <body>
@@ -297,13 +297,21 @@
         <section id="assistantPanel" class="subtab-panel" role="tabpanel" hidden>
           <h3>Exploit Assistant</h3>
           <p class="comparison-note">Ask about active executors, pricing, platforms, and risk. The assistant replies instantly using the latest executor data from this page</p>
-          <div id="assistantStarter" class="assistant-starter">
+
+          <div class="assistant-toolbar">
+            <span id="assistantTokenMeter" class="assistant-token-meter" aria-live="polite"></span>
+            <button id="assistantClearBtn" class="btn-ghost-outline" type="button">Clear chat</button>
           </div>
+
+          <div id="assistantStarter" class="assistant-starter"></div>
           <div id="assistantMessages" class="assistant-messages" aria-live="polite"></div>
           <form id="assistantForm" class="assistant-form">
-            <input id="assistantInput" class="assistant-input" type="text" placeholder="Example: Which executors are safest for beginners?" maxlength="260" />
+            <input id="assistantInput" class="assistant-input" type="text" placeholder="Example: Which executors are safest for beginners?" maxlength="260" autocomplete="off" />
             <button id="assistantSendBtn" class="btn-primary" type="submit">Send</button>
           </form>
+          <div class="assistant-form-meta">
+            <span id="assistantCharCount">0 / 260</span>
+          </div>
         </section>
 
         <section id="popularScriptsPanel" class="subtab-panel" role="tabpanel" hidden>
@@ -393,7 +401,7 @@
   <script src="./data/executor-data.js?v=1.0.0" defer></script>
   <script src="./data/popular-scripts.js?v=2.0.0" defer></script>
   <script src="./data/site-changelog.js?v=1.0.0" defer></script>
-  <script src="./script.js?v=2.1.0" defer></script>
+  <script src="./script.js?v=2.2.0" defer></script>
   <!-- Sequence clue: Logo -> Search -> Subtitle -> Featured -> Logo -->
 </body>
 </html>
