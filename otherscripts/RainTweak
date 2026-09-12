@@ -1,6 +1,6 @@
 {
     "name": "rainStorm OLED (no rain)",
-    "description": "An OLED theme without the rain background.",
+    "description": "An OLED theme without the rain background. Keyboard fixed.",
     "authors": [
         {
             "name": "cxsir",
@@ -357,7 +357,7 @@
             "#787878"
         ],
         "KEYBOARD": [
-            "#2A2A2A"
+            "#000000"
         ],
         "SCROLLBAR_THIN_THUMB": [
             "#2E2E2E"
