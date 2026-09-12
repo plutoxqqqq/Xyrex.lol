@@ -1,6 +1,6 @@
 {
     "name": "rainStorm OLED (no rain)",
-    "description": "OLED, no rain, aggressive white text for keyboard",
+    "description": "An OLED theme without the rain background.",
     "authors": [
         {
             "name": "cxsir",
@@ -75,13 +75,13 @@
             "#0A0A0A"
         ],
         "CHANNEL_ICON": [
-            "#FFFFFF"
+            "#848484"
         ],
         "CHANNELS_DEFAULT": [
-            "#FFFFFF"
+            "#9A9A9A"
         ],
         "CHANNELTEXTAREA_BACKGROUND": [
-            "#000000"
+            "#0A0A0A"
         ],
         "CHAT_BACKGROUND": [
             "#000000"
@@ -93,16 +93,16 @@
             "#2A2A2A"
         ],
         "HEADER_PRIMARY": [
-            "#FFFFFF"
+            "#F2F2F2"
         ],
         "HEADER_SECONDARY": [
-            "#FFFFFF"
+            "#9A9A9A"
         ],
         "INPUT_BACKGROUND": [
-            "#000000"
+            "#0A0A0A"
         ],
         "INPUT_BACKGROUND_DEFAULT": [
-            "#000000"
+            "#0A0A0A"
         ],
         "INPUT_BORDER_ACTIVE": [
             "#DEDEDE"
@@ -111,37 +111,37 @@
             "#DEDEDE"
         ],
         "INTERACTIVE_ACTIVE": [
-            "#FFFFFF"
+            "#F2F2F2"
         ],
         "INTERACTIVE_HOVER": [
-            "#FFFFFF"
+            "#DEDEDE"
         ],
         "INTERACTIVE_MUTED": [
             "#4A4A4A"
         ],
         "INTERACTIVE_NORMAL": [
-            "#FFFFFF"
+            "#B6B6B6"
         ],
         "MENTION_BACKGROUND": [
             "#FFFFFF1F"
         ],
         "MENTION_FOREGROUND": [
-            "#FFFFFF"
+            "#F2F2F2"
         ],
         "TEXT_DANGER": [
             "#787878"
         ],
         "TEXT_LINK": [
-            "#FFFFFF"
+            "#8A8A8A"
         ],
         "TEXT_NORMAL": [
-            "#FFFFFF"
+            "#DEDEDE"
         ],
         "TEXT_MUTED": [
-            "#FFFFFF"
+            "#9A9A9A"
         ],
         "TEXT_PRIMARY": [
-            "#FFFFFF"
+            "#DEDEDE"
         ],
         "TEXT_WARNING": [
             "#B6B6B6"
@@ -255,7 +255,7 @@
             "#F2F2F2"
         ],
         "REDESIGN_CHAT_INPUT_BACKGROUND": [
-            "#000000"
+            "#0A0A0A"
         ],
         "REDESIGN_INPUT_CONTROL_SELECTED": [
             "#C8C8C8"
@@ -370,19 +370,16 @@
         ],
         "CHAT_MENTIONS_BACKGROUND": [
             "#FFFFFF1F"
-        ],
-        "KEYBOARD": [
-            "#000000"
         ]
     },
     "rawColors": {
-        "PRIMARY_100": "#FFFFFF",
-        "PRIMARY_200": "#FFFFFF",
-        "PRIMARY_300": "#FFFFFF",
-        "PRIMARY_330": "#FFFFFF",
-        "PRIMARY_360": "#FFFFFF",
-        "PRIMARY_400": "#FFFFFF",
-        "PRIMARY_460": "#FFFFFF",
+        "PRIMARY_100": "#E8E8E8",
+        "PRIMARY_200": "#DEDEDE",
+        "PRIMARY_300": "#C8C8C8",
+        "PRIMARY_330": "#BEBEBE",
+        "PRIMARY_360": "#B0B0B0",
+        "PRIMARY_400": "#DEDEDE",
+        "PRIMARY_460": "#000000",
         "PRIMARY_500": "#000000",
         "PRIMARY_530": "#000000",
         "PRIMARY_600": "#000000",
@@ -392,28 +389,28 @@
         "PRIMARY_700": "#000000",
         "PRIMARY_730": "#000000",
         "PRIMARY_800": "#000000",
-        "PLUM_0": "#FFFFFF",
-        "PLUM_10": "#FFFFFF",
-        "PLUM_11": "#FFFFFF",
-        "PLUM_13": "#FFFFFF",
-        "PLUM_14": "#FFFFFF",
-        "PLUM_15": "#FFFFFF",
-        "PLUM_16": "#FFFFFF",
-        "PLUM_17": "#FFFFFF",
-        "PLUM_18": "#FFFFFF",
-        "PLUM_19": "#FFFFFF",
+        "PLUM_0": "#C0C0C0",
+        "PLUM_10": "#848484",
+        "PLUM_11": "#000000",
+        "PLUM_13": "#3A3A3A",
+        "PLUM_14": "#4A4A4A",
+        "PLUM_15": "#3A3A3A",
+        "PLUM_16": "#000000",
+        "PLUM_17": "#000000",
+        "PLUM_18": "#000000",
+        "PLUM_19": "#1D1D1D",
         "PLUM_20": "#000000",
         "PLUM_22": "#000000",
         "PLUM_23": "#000000",
         "PLUM_24": "#000000",
-        "PLUM_3": "#FFFFFF",
-        "PLUM_4": "#FFFFFF",
-        "PLUM_6": "#FFFFFF",
-        "BRAND_260": "#FFFFFF",
-        "BRAND_300": "#FFFFFF",
-        "BRAND_330": "#FFFFFF",
-        "BRAND_345": "#FFFFFF",
-        "BRAND_360": "#FFFFFF",
+        "PLUM_3": "#F2F2F2",
+        "PLUM_4": "#DEDEDE",
+        "PLUM_6": "#F2F2F2",
+        "BRAND_260": "#6C6C6Caa",
+        "BRAND_300": "#6C6C6C",
+        "BRAND_330": "#3A3A3A",
+        "BRAND_345": "#848484",
+        "BRAND_360": "#6C6C6C",
         "BRAND_400": "#848484",
         "BRAND_430": "#848484",
         "BRAND_460": "#3A3A3A",
@@ -512,7 +509,7 @@
         "BLUE_630": "#8A8A8A",
         "BLUE_660": "#8A8A8A",
         "BLUE_700": "#8A8A8A",
-        "WHITE_630": "#FFFFFF",
+        "WHITE_630": "#6B6B6B",
         "ROLE_DEFAULT": "#1C1C1C",
         "BLACK_460": "#000000",
         "CHAT_MENTIONS_BACKGROUND_DARK": "#2A2A2A",
