@@ -1,6 +1,6 @@
 {
     "name": "rainStorm OLED (no rain)",
-    "description": "An OLED theme without the rain background.",
+    "description": "An OLED theme without the rain background. Keyboard contrast fixed.",
     "authors": [
         {
             "name": "cxsir",
@@ -75,10 +75,10 @@
             "#0A0A0A"
         ],
         "CHANNEL_ICON": [
-            "#848484"
+            "#FFFFFF"
         ],
         "CHANNELS_DEFAULT": [
-            "#9A9A9A"
+            "#FFFFFF"
         ],
         "CHANNELTEXTAREA_BACKGROUND": [
             "#000000"
@@ -93,10 +93,10 @@
             "#2A2A2A"
         ],
         "HEADER_PRIMARY": [
-            "#F2F2F2"
+            "#FFFFFF"
         ],
         "HEADER_SECONDARY": [
-            "#9A9A9A"
+            "#FFFFFF"
         ],
         "INPUT_BACKGROUND": [
             "#000000"
@@ -111,37 +111,37 @@
             "#DEDEDE"
         ],
         "INTERACTIVE_ACTIVE": [
-            "#F2F2F2"
+            "#FFFFFF"
         ],
         "INTERACTIVE_HOVER": [
-            "#DEDEDE"
+            "#FFFFFF"
         ],
         "INTERACTIVE_MUTED": [
             "#4A4A4A"
         ],
         "INTERACTIVE_NORMAL": [
-            "#B6B6B6"
+            "#FFFFFF"
         ],
         "MENTION_BACKGROUND": [
             "#FFFFFF1F"
         ],
         "MENTION_FOREGROUND": [
-            "#F2F2F2"
+            "#FFFFFF"
         ],
         "TEXT_DANGER": [
             "#787878"
         ],
         "TEXT_LINK": [
-            "#8A8A8A"
+            "#FFFFFF"
         ],
         "TEXT_NORMAL": [
-            "#DEDEDE"
+            "#FFFFFF"
         ],
         "TEXT_MUTED": [
-            "#9A9A9A"
+            "#FFFFFF"
         ],
         "TEXT_PRIMARY": [
-            "#DEDEDE"
+            "#FFFFFF"
         ],
         "TEXT_WARNING": [
             "#B6B6B6"
@@ -370,6 +370,9 @@
         ],
         "CHAT_MENTIONS_BACKGROUND": [
             "#FFFFFF1F"
+        ],
+        "KEYBOARD": [
+            "#000000"
         ]
     },
     "rawColors": {
